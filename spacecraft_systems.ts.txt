@@ -1,0 +1,494 @@
+/**
+ * Spacecraft Systems for Space Explorer 16-Bit
+ * Handles ship components, weapons, shields, and warp drive
+ */
+
+import { Vector2D, Spacecraft } from './basic_classes';
+
+export interface WeaponSystem {
+    type: string;
+    name: string;
+    damage: number;
+    range: number;
+    energyCost: number;
+    cooldown: number;
+    currentCooldown: number;
+    ammunition?: number;
+    maxAmmunition?: number;
+    heat: number;
+    maxHeat: number;
+}
+
+export interface ShieldSystem {
+    active: boolean;
+    energy: number;
+    maxEnergy: number;
+    regenerationRate: number;
+    sections: ShieldSection[];
+    overloaded: boolean;
+    overloadTimer: number;
+}
+
+export interface ShieldSection {
+    name: string;
+    strength: number;
+    maxStrength: number;
+    angle: number; // Direction this section covers
+    arc: number; // Arc coverage in radians
+}
+
+export interface WarpDrive {
+    active: boolean;
+    charging: boolean;
+    chargeLevel: number;
+    maxCharge: number;
+    fuelConsumption: number;
+    energyConsumption: number;
+    gravityLimit: number; // Cannot warp if gravity > this value
+    cooldownTimer: number;
+    destinationSet: boolean;
+    destination?: Vector2D;
+}
+
+export interface ReactorSystem {
+    active: boolean;
+    efficiency: number;
+    temperature: number;
+    maxTemperature: number;
+    fuelConsumption: number;
+    energyOutput: number;
+    overheating: boolean;
+}
+
+export interface LifeSupportSystem {
+    active: boolean;
+    oxygenLevel: number;
+    maxOxygen: number;
+    powerConsumption: number;
+    recyclingEfficiency: number;
+    emergencyMode: boolean;
+}
+
+export class SpacecraftSystems {
+    
+    static initializeWeaponSystems(): WeaponSystem[] {
+        return [
+            {
+                type: 'laser',
+                name: 'Pulse Laser Mk-II',
+                damage: 25,
+                range: 300,
+                energyCost: 15,
+                cooldown: 0.5,
+                currentCooldown: 0,
+                heat: 0,
+                maxHeat: 100
+            },
+            {
+                type: 'missile',
+                name: 'Guided Missile System',
+                damage: 75,
+                range: 500,
+                energyCost: 5,
+                cooldown: 2.0,
+                currentCooldown: 0,
+                ammunition: 12,
+                maxAmmunition: 24,
+                heat: 0,
+                maxHeat: 50
+            },
+            {
+                type: 'railgun',
+                name: 'Magnetic Accelerator',
+                damage: 150,
+                range: 800,
+                energyCost: 50,
+                cooldown: 4.0,
+                currentCooldown: 0,
+                heat: 0,
+                maxHeat: 200
+            },
+            {
+                type: 'mining_laser',
+                name: 'Industrial Mining Beam',
+                damage: 10,
+                range: 150,
+                energyCost: 8,
+                cooldown: 0.2,
+                currentCooldown: 0,
+                heat: 0,
+                maxHeat: 80
+            }
+        ];
+    }
+
+    static initializeShieldSystem(): ShieldSystem {
+        return {
+            active: true,
+            energy: 100,
+            maxEnergy: 100,
+            regenerationRate: 5,
+            overloaded: false,
+            overloadTimer: 0,
+            sections: [
+                { name: 'Forward', strength: 100, maxStrength: 100, angle: 0, arc: Math.PI / 2 },
+                { name: 'Starboard', strength: 100, maxStrength: 100, angle: Math.PI / 2, arc: Math.PI / 2 },
+                { name: 'Aft', strength: 100, maxStrength: 100, angle: Math.PI, arc: Math.PI / 2 },
+                { name: 'Port', strength: 100, maxStrength: 100, angle: 3 * Math.PI / 2, arc: Math.PI / 2 }
+            ]
+        };
+    }
+
+    static initializeWarpDrive(): WarpDrive {
+        return {
+            active: false,
+            charging: false,
+            chargeLevel: 0,
+            maxCharge: 100,
+            fuelConsumption: 10,
+            energyConsumption: 25,
+            gravityLimit: 50,
+            cooldownTimer: 0,
+            destinationSet: false
+        };
+    }
+
+    static initializeReactor(): ReactorSystem {
+        return {
+            active: true,
+            efficiency: 0.85,
+            temperature: 300,
+            maxTemperature: 1000,
+            fuelConsumption: 0.1,
+            energyOutput: 20,
+            overheating: false
+        };
+    }
+
+    static initializeLifeSupport(): LifeSupportSystem {
+        return {
+            active: true,
+            oxygenLevel: 100,
+            maxOxygen: 100,
+            powerConsumption: 2,
+            recyclingEfficiency: 0.95,
+            emergencyMode: false
+        };
+    }
+
+    static updateWeaponSystems(weapons: WeaponSystem[], deltaTime: number): void {
+        weapons.forEach(weapon => {
+            // Update cooldowns
+            if (weapon.currentCooldown > 0) {
+                weapon.currentCooldown = Math.max(0, weapon.currentCooldown - deltaTime);
+            }
+
+            // Cool down heat
+            if (weapon.heat > 0) {
+                const coolingRate = weapon.type === 'laser' ? 20 : 15;
+                weapon.heat = Math.max(0, weapon.heat - coolingRate * deltaTime);
+            }
+        });
+    }
+
+    static updateShieldSystem(shields: ShieldSystem, spacecraft: Spacecraft, deltaTime: number): void {
+        if (!shields.active || spacecraft.systems.energy <= 0) {
+            return;
+        }
+
+        // Handle shield overload recovery
+        if (shields.overloaded) {
+            shields.overloadTimer -= deltaTime;
+            if (shields.overloadTimer <= 0) {
+                shields.overloaded = false;
+                shields.energy = shields.maxEnergy * 0.1; // Restart at 10%
+            }
+            return;
+        }
+
+        // Regenerate shields
+        if (shields.energy < shields.maxEnergy && spacecraft.systems.energy > 10) {
+            const regenAmount = shields.regenerationRate * deltaTime;
+            const energyCost = regenAmount * 0.5;
+            
+            if (spacecraft.systems.energy >= energyCost) {
+                shields.energy = Math.min(shields.maxEnergy, shields.energy + regenAmount);
+                spacecraft.systems.energy -= energyCost;
+            }
+        }
+
+        // Regenerate shield sections
+        shields.sections.forEach(section => {
+            if (section.strength < section.maxStrength) {
+                const sectionRegen = (shields.regenerationRate * 0.8) * deltaTime;
+                section.strength = Math.min(section.maxStrength, section.strength + sectionRegen);
+            }
+        });
+
+        // Consume base power
+        spacecraft.systems.energy = Math.max(0, spacecraft.systems.energy - 1 * deltaTime);
+    }
+
+    static updateWarpDrive(warpDrive: WarpDrive, spacecraft: Spacecraft, deltaTime: number): void {
+        // Handle cooldown
+        if (warpDrive.cooldownTimer > 0) {
+            warpDrive.cooldownTimer -= deltaTime;
+            return;
+        }
+
+        // Handle charging
+        if (warpDrive.charging && !warpDrive.active) {
+            if (spacecraft.systems.fuel >= warpDrive.fuelConsumption && 
+                spacecraft.systems.energy >= warpDrive.energyConsumption) {
+                
+                const chargeRate = 25 * deltaTime; // Charges in 4 seconds
+                warpDrive.chargeLevel = Math.min(warpDrive.maxCharge, warpDrive.chargeLevel + chargeRate);
+                
+                // Consume resources during charging
+                spacecraft.systems.fuel -= warpDrive.fuelConsumption * 0.1 * deltaTime;
+                spacecraft.systems.energy -= warpDrive.energyConsumption * 0.2 * deltaTime;
+                
+                // Auto-activate when fully charged
+                if (warpDrive.chargeLevel >= warpDrive.maxCharge && warpDrive.destinationSet) {
+                    warpDrive.active = true;
+                    warpDrive.charging = false;
+                }
+            } else {
+                // Not enough resources, stop charging
+                warpDrive.charging = false;
+                warpDrive.chargeLevel = 0;
+            }
+        }
+
+        // Handle active warp
+        if (warpDrive.active) {
+            // Massive resource consumption during warp
+            spacecraft.systems.fuel -= warpDrive.fuelConsumption * deltaTime;
+            spacecraft.systems.energy -= warpDrive.energyConsumption * deltaTime;
+            
+            // Apply warp velocity
+            const warpSpeed = 1000; // Much faster than normal movement
+            if (warpDrive.destination) {
+                const dx = warpDrive.destination.x - spacecraft.position.x;
+                const dy = warpDrive.destination.y - spacecraft.position.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 50) { // Still far from destination
+                    const dirX = dx / distance;
+                    const dirY = dy / distance;
+                    
+                    spacecraft.velocity.x = dirX * warpSpeed;
+                    spacecraft.velocity.y = dirY * warpSpeed;
+                } else {
+                    // Arrived at destination
+                    this.deactivateWarp(warpDrive, spacecraft);
+                }
+            }
+            
+            // Emergency shutdown if resources depleted
+            if (spacecraft.systems.fuel <= 0 || spacecraft.systems.energy <= 0) {
+                this.emergencyWarpShutdown(warpDrive, spacecraft);
+            }
+        }
+    }
+
+    static updateReactor(reactor: ReactorSystem, spacecraft: Spacecraft, deltaTime: number): void {
+        if (!reactor.active) {
+            return;
+        }
+
+        // Consume fuel and produce energy
+        if (spacecraft.systems.fuel > 0) {
+            spacecraft.systems.fuel -= reactor.fuelConsumption * deltaTime;
+            const energyGenerated = reactor.energyOutput * reactor.efficiency * deltaTime;
+            spacecraft.systems.energy = Math.min(100, spacecraft.systems.energy + energyGenerated);
+        }
+
+        // Update temperature based on load
+        const targetTemp = 300 + (100 - spacecraft.systems.energy) * 5; // Higher temp when energy low
+        if (reactor.temperature < targetTemp) {
+            reactor.temperature += 50 * deltaTime;
+        } else {
+            reactor.temperature -= 20 * deltaTime;
+        }
+
+        // Handle overheating
+        if (reactor.temperature > reactor.maxTemperature * 0.9) {
+            reactor.overheating = true;
+            reactor.efficiency = Math.max(0.3, reactor.efficiency - 0.5 * deltaTime);
+        } else if (reactor.overheating && reactor.temperature < reactor.maxTemperature * 0.7) {
+            reactor.overheating = false;
+            reactor.efficiency = Math.min(0.85, reactor.efficiency + 0.2 * deltaTime);
+        }
+
+        // Critical failure at max temperature
+        if (reactor.temperature >= reactor.maxTemperature) {
+            reactor.active = false;
+            // Apply damage to spacecraft
+            spacecraft.systems.hull = Math.max(0, spacecraft.systems.hull - 20);
+        }
+    }
+
+    static updateLifeSupport(lifeSupport: LifeSupportSystem, spacecraft: Spacecraft, deltaTime: number): void {
+        if (!lifeSupport.active) {
+            // Without life support, gradually lose oxygen
+            lifeSupport.oxygenLevel = Math.max(0, lifeSupport.oxygenLevel - 2 * deltaTime);
+            return;
+        }
+
+        // Consume power
+        if (spacecraft.systems.energy >= lifeSupport.powerConsumption * deltaTime) {
+            spacecraft.systems.energy -= lifeSupport.powerConsumption * deltaTime;
+            
+            // Maintain oxygen levels through recycling
+            const oxygenGain = lifeSupport.recyclingEfficiency * 0.5 * deltaTime;
+            lifeSupport.oxygenLevel = Math.min(lifeSupport.maxOxygen, 
+                lifeSupport.oxygenLevel + oxygenGain);
+        } else {
+            // Not enough power - emergency mode
+            lifeSupport.emergencyMode = true;
+            lifeSupport.oxygenLevel = Math.max(0, lifeSupport.oxygenLevel - 1 * deltaTime);
+        }
+
+        // Exit emergency mode when power is restored
+        if (lifeSupport.emergencyMode && spacecraft.systems.energy > 20) {
+            lifeSupport.emergencyMode = false;
+        }
+
+        // Critical situation affects crew performance
+        if (lifeSupport.oxygenLevel < 20) {
+            // Reduce ship performance due to hypoxia
+            spacecraft.maxThrust *= 0.8;
+        }
+    }
+
+    static fireWeapon(weapon: WeaponSystem, spacecraft: Spacecraft, target: Vector2D): boolean {
+        // Check if weapon can fire
+        if (weapon.currentCooldown > 0 || weapon.heat >= weapon.maxHeat) {
+            return false;
+        }
+
+        // Check ammunition
+        if (weapon.ammunition !== undefined && weapon.ammunition <= 0) {
+            return false;
+        }
+
+        // Check energy
+        if (spacecraft.systems.energy < weapon.energyCost) {
+            return false;
+        }
+
+        // Fire weapon
+        spacecraft.systems.energy -= weapon.energyCost;
+        weapon.currentCooldown = weapon.cooldown;
+        weapon.heat += weapon.type === 'laser' ? 20 : 10;
+
+        if (weapon.ammunition !== undefined) {
+            weapon.ammunition--;
+        }
+
+        return true;
+    }
+
+    static absorbShieldDamage(shields: ShieldSystem, damage: number, hitAngle: number): number {
+        if (!shields.active || shields.overloaded) {
+            return damage; // Full damage passes through
+        }
+
+        // Find which shield section was hit
+        const section = shields.sections.find(s => {
+            const angleDiff = Math.abs(this.normalizeAngle(hitAngle - s.angle));
+            return angleDiff <= s.arc / 2;
+        });
+
+        if (!section || section.strength <= 0) {
+            return damage; // No shield protection
+        }
+
+        // Shield absorbs damage
+        const absorbed = Math.min(damage, section.strength);
+        section.strength -= absorbed;
+        shields.energy = Math.max(0, shields.energy - absorbed * 0.5);
+
+        // Check for shield overload
+        if (shields.energy <= 0) {
+            shields.overloaded = true;
+            shields.overloadTimer = 5; // 5 second recovery
+        }
+
+        return damage - absorbed;
+    }
+
+    static canActivateWarp(warpDrive: WarpDrive, spacecraft: Spacecraft, gravityStrength: number): boolean {
+        return !warpDrive.active && 
+               !warpDrive.charging && 
+               warpDrive.cooldownTimer <= 0 &&
+               spacecraft.systems.fuel >= 20 &&
+               spacecraft.systems.energy >= 25 &&
+               gravityStrength < warpDrive.gravityLimit;
+    }
+
+    static initiateWarpSequence(warpDrive: WarpDrive, destination: Vector2D): void {
+        warpDrive.charging = true;
+        warpDrive.chargeLevel = 0;
+        warpDrive.destination = destination;
+        warpDrive.destinationSet = true;
+    }
+
+    static deactivateWarp(warpDrive: WarpDrive, spacecraft: Spacecraft): void {
+        warpDrive.active = false;
+        warpDrive.charging = false;
+        warpDrive.chargeLevel = 0;
+        warpDrive.cooldownTimer = 30; // 30 second cooldown
+        warpDrive.destinationSet = false;
+        
+        // Return to normal velocity
+        spacecraft.velocity.x *= 0.1;
+        spacecraft.velocity.y *= 0.1;
+    }
+
+    static emergencyWarpShutdown(warpDrive: WarpDrive, spacecraft: Spacecraft): void {
+        this.deactivateWarp(warpDrive, spacecraft);
+        
+        // Apply damage from emergency shutdown
+        spacecraft.systems.hull = Math.max(0, spacecraft.systems.hull - 15);
+        spacecraft.systems.energy = Math.max(0, spacecraft.systems.energy - 20);
+        
+        // Longer cooldown for emergency shutdown
+        warpDrive.cooldownTimer = 60;
+    }
+
+    static repairSystem(spacecraft: Spacecraft, systemName: string, repairAmount: number): boolean {
+        // Check if we have repair materials and energy
+        if (spacecraft.systems.energy < 10) {
+            return false;
+        }
+
+        spacecraft.systems.energy -= 10;
+
+        switch (systemName) {
+            case 'hull':
+                spacecraft.systems.hull = Math.min(100, spacecraft.systems.hull + repairAmount);
+                break;
+            case 'shields':
+                // Repair shield sections
+                break;
+            case 'engines':
+                spacecraft.systems.engines = true;
+                break;
+            case 'reactor':
+                spacecraft.systems.reactor = true;
+                break;
+            default:
+                return false;
+        }
+
+        return true;
+    }
+
+    private static normalizeAngle(angle: number): number {
+        while (angle > Math.PI) angle -= 2 * Math.PI;
+        while (angle < -Math.PI) angle += 2 * Math.PI;
+        return angle;
+    }
+}

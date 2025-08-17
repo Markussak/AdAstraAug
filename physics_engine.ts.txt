@@ -1,0 +1,206 @@
+/**
+ * Physics Engine for Space Explorer 16-Bit
+ * Handles realistic Newtonian physics, gravity, and orbital mechanics
+ */
+
+import { Vector2D, CelestialBody, Spacecraft } from './basic_classes';
+
+export class PhysicsEngine {
+    private static readonly GRAVITATIONAL_CONSTANT = 6.674e-11;
+    private static readonly SPACE_FRICTION = 0.9999; // Very minimal friction in space
+    private static readonly ATMOSPHERE_DRAG = 0.95;
+    
+    static applyNewtonian(entity: Spacecraft, deltaTime: number): void {
+        // Apply velocity to position
+        entity.position.x += entity.velocity.x * deltaTime;
+        entity.position.y += entity.velocity.y * deltaTime;
+        
+        // Apply minimal space friction
+        entity.velocity.x *= Math.pow(this.SPACE_FRICTION, deltaTime);
+        entity.velocity.y *= Math.pow(this.SPACE_FRICTION, deltaTime);
+    }
+    
+    static applyGravity(spacecraft: Spacecraft, celestialBodies: CelestialBody[], deltaTime: number): void {
+        celestialBodies.forEach(body => {
+            const dx = body.position.x - spacecraft.position.x;
+            const dy = body.position.y - spacecraft.position.y;
+            const distanceSquared = dx * dx + dy * dy;
+            const distance = Math.sqrt(distanceSquared);
+            
+            // Avoid singularities and unrealistic forces at very close distances
+            if (distance > body.radius * 2) {
+                const force = (this.GRAVITATIONAL_CONSTANT * body.mass * spacecraft.mass) / distanceSquared;
+                const acceleration = force / spacecraft.mass;
+                
+                const angle = Math.atan2(dy, dx);
+                
+                // Apply gravitational acceleration
+                spacecraft.velocity.x += Math.cos(angle) * acceleration * deltaTime * 0.001;
+                spacecraft.velocity.y += Math.sin(angle) * acceleration * deltaTime * 0.001;
+            }
+        });
+    }
+    
+    static applyAtmosphericDrag(spacecraft: Spacecraft, planet: CelestialBody, deltaTime: number): void {
+        if (!planet.atmosphere) return;
+        
+        const dx = spacecraft.position.x - planet.position.x;
+        const dy = spacecraft.position.y - planet.position.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Check if spacecraft is within atmospheric range
+        const atmosphereRange = planet.radius + planet.atmosphere.height;
+        if (distance <= atmosphereRange) {
+            const atmosphereDensity = planet.atmosphere.density * 
+                (1 - (distance - planet.radius) / planet.atmosphere.height);
+            
+            const dragCoefficient = this.ATMOSPHERE_DRAG * atmosphereDensity;
+            spacecraft.velocity.x *= Math.pow(dragCoefficient, deltaTime);
+            spacecraft.velocity.y *= Math.pow(dragCoefficient, deltaTime);
+        }
+    }
+    
+    static calculateOrbitalVelocity(centralBody: CelestialBody, distance: number): number {
+        return Math.sqrt(this.GRAVITATIONAL_CONSTANT * centralBody.mass / distance);
+    }
+    
+    static calculateEscapeVelocity(centralBody: CelestialBody, distance: number): number {
+        return Math.sqrt(2 * this.GRAVITATIONAL_CONSTANT * centralBody.mass / distance);
+    }
+    
+    static isInStableOrbit(spacecraft: Spacecraft, centralBody: CelestialBody): boolean {
+        const dx = spacecraft.position.x - centralBody.position.x;
+        const dy = spacecraft.position.y - centralBody.position.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        const speed = Math.sqrt(spacecraft.velocity.x ** 2 + spacecraft.velocity.y ** 2);
+        const escapeVelocity = this.calculateEscapeVelocity(centralBody, distance);
+        const orbitalVelocity = this.calculateOrbitalVelocity(centralBody, distance);
+        
+        return speed < escapeVelocity && speed > orbitalVelocity * 0.5;
+    }
+    
+    static detectCollisions(entity1: any, entity2: any): boolean {
+        const dx = entity1.position.x - entity2.position.x;
+        const dy = entity1.position.y - entity2.position.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        return distance < (entity1.radius + entity2.radius);
+    }
+    
+    static resolveCollision(entity1: Spacecraft, entity2: any): void {
+        // Simple elastic collision resolution
+        const dx = entity1.position.x - entity2.position.x;
+        const dy = entity1.position.y - entity2.position.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance === 0) return; // Avoid division by zero
+        
+        const normalX = dx / distance;
+        const normalY = dy / distance;
+        
+        // Separate objects
+        const overlap = (entity1.radius + entity2.radius) - distance;
+        entity1.position.x += normalX * overlap * 0.5;
+        entity1.position.y += normalY * overlap * 0.5;
+        
+        // Calculate relative velocity
+        const relativeVelX = entity1.velocity.x - (entity2.velocity?.x || 0);
+        const relativeVelY = entity1.velocity.y - (entity2.velocity?.y || 0);
+        
+        // Calculate relative velocity in collision normal direction
+        const velocityAlongNormal = relativeVelX * normalX + relativeVelY * normalY;
+        
+        // Do not resolve if velocities are separating
+        if (velocityAlongNormal > 0) return;
+        
+        // Calculate restitution
+        const restitution = 0.8;
+        
+        // Calculate impulse scalar
+        let impulse = -(1 + restitution) * velocityAlongNormal;
+        impulse /= (1 / entity1.mass) + (1 / (entity2.mass || 1000));
+        
+        // Apply impulse
+        const impulseX = impulse * normalX;
+        const impulseY = impulse * normalY;
+        
+        entity1.velocity.x += impulseX / entity1.mass;
+        entity1.velocity.y += impulseY / entity1.mass;
+    }
+    
+    static applyThrust(spacecraft: Spacecraft, thrustVector: Vector2D, deltaTime: number): void {
+        if (!spacecraft.systems.engines || spacecraft.systems.fuel <= 0) return;
+        
+        const thrustForce = spacecraft.maxThrust * (spacecraft.systems.reactor ? 1.0 : 0.5);
+        
+        // Apply thrust
+        spacecraft.velocity.x += thrustVector.x * thrustForce * deltaTime / spacecraft.mass;
+        spacecraft.velocity.y += thrustVector.y * thrustForce * deltaTime / spacecraft.mass;
+        
+        // Consume fuel based on thrust and ship mass
+        const fuelConsumption = Math.sqrt(thrustVector.x ** 2 + thrustVector.y ** 2) * 
+                               spacecraft.mass * 0.001 * deltaTime;
+        spacecraft.systems.fuel = Math.max(0, spacecraft.systems.fuel - fuelConsumption);
+    }
+    
+    static calculateTidalEffects(spacecraft: Spacecraft, centralBody: CelestialBody): void {
+        const dx = spacecraft.position.x - centralBody.position.x;
+        const dy = spacecraft.position.y - centralBody.position.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Apply tidal forces if very close to massive body
+        if (distance < centralBody.radius * 3 && centralBody.mass > 1000) {
+            const tidalStrength = centralBody.mass / (distance ** 3);
+            
+            // Apply small random forces to simulate tidal stress
+            spacecraft.velocity.x += (Math.random() - 0.5) * tidalStrength * 0.001;
+            spacecraft.velocity.y += (Math.random() - 0.5) * tidalStrength * 0.001;
+        }
+    }
+    
+    static updateOrbitalMechanics(celestialBodies: CelestialBody[], deltaTime: number): void {
+        celestialBodies.forEach(body => {
+            if (body.orbitData) {
+                // Update orbital position
+                body.orbitData.currentAngle += body.orbitData.orbitalSpeed * deltaTime;
+                
+                // Calculate new position based on elliptical orbit
+                const a = body.orbitData.semiMajorAxis;
+                const e = body.orbitData.eccentricity;
+                const angle = body.orbitData.currentAngle;
+                
+                const r = a * (1 - e * e) / (1 + e * Math.cos(angle));
+                body.position.x = body.orbitData.centerX + r * Math.cos(angle);
+                body.position.y = body.orbitData.centerY + r * Math.sin(angle);
+            }
+            
+            // Update rotation
+            if (body.rotationSpeed) {
+                body.rotation += body.rotationSpeed * deltaTime;
+                body.rotation %= (Math.PI * 2);
+            }
+        });
+    }
+    
+    static calculateWarpEffects(spacecraft: Spacecraft, warpLevel: number): void {
+        if (!spacecraft.systems.warp || spacecraft.systems.fuel < 20) return;
+        
+        // Warp drive cannot function in strong gravity wells
+        const minimumWarpDistance = 100; // AU from any massive body
+        
+        // Check for nearby massive objects that would prevent warp
+        // This would be called with nearby celestial bodies in the actual implementation
+        
+        // Apply warp velocity multiplier
+        if (warpLevel > 0) {
+            const warpMultiplier = 1 + warpLevel * 10;
+            spacecraft.velocity.x *= warpMultiplier;
+            spacecraft.velocity.y *= warpMultiplier;
+            
+            // Consume massive amounts of fuel during warp
+            spacecraft.systems.fuel -= warpLevel * 5 * 0.016; // Per frame at 60fps
+            spacecraft.systems.energy -= warpLevel * 3 * 0.016;
+        }
+    }
+}

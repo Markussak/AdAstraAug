@@ -1,0 +1,335 @@
+// renderer.ts - 16-bit Rendering Engine
+import { GameConfig } from ‘./game_config’;
+import { Camera } from ‘./camera’;
+import { Vector2 } from ‘./basic_classes’;
+
+export interface RenderableEntity {
+position: Vector2;
+render(renderer: Renderer, camera: Camera): void;
+}
+
+export class Renderer {
+private canvas: HTMLCanvasElement;
+private ctx: CanvasRenderingContext2D;
+private width: number = 0;
+private height: number = 0;
+private pixelRatio: number = 1;
+
+```
+// Rendering layers for depth sorting
+private backgroundLayer: RenderableEntity[] = [];
+private mainLayer: RenderableEntity[] = [];
+private effectsLayer: RenderableEntity[] = [];
+private uiLayer: RenderableEntity[] = [];
+
+// Post-processing effects
+private ditherPattern: ImageData | null = null;
+private scanlineEffect: boolean = true;
+private crtCurvature: boolean = true;
+
+constructor(canvasId: string) {
+    this.canvas = document.getElementById(canvasId) as HTMLCanvasElement;
+    if (!this.canvas) {
+        throw new Error(`Canvas with id '${canvasId}' not found`);
+    }
+
+    const context = this.canvas.getContext('2d');
+    if (!context) {
+        throw new Error('Failed to get 2D rendering context');
+    }
+    this.ctx = context;
+
+    this.initializeRenderer();
+    this.createDitherPattern();
+    this.setupResizeHandler();
+}
+
+private initializeRenderer(): void {
+    // Disable image smoothing for pixel-perfect rendering
+    this.ctx.imageSmoothingEnabled = false;
+    this.ctx.webkitImageSmoothingEnabled = false;
+    this.ctx.mozImageSmoothingEnabled = false;
+    this.ctx.msImageSmoothingEnabled = false;
+
+    // Set pixel ratio for high-DPI displays
+    this.pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    
+    this.resizeCanvas();
+}
+
+private createDitherPattern(): void {
+    const size = 4;
+    const pattern = this.ctx.createImageData(size, size);
+    const data = pattern.data;
+
+    // Classic Bayer 4x4 dithering pattern
+    const bayerMatrix = [
+        [0, 8, 2, 10],
+        [12, 4, 14, 6],
+        [3, 11, 1, 9],
+        [15, 7, 13, 5]
+    ];
+
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const index = (y * size + x) * 4;
+            const threshold = bayerMatrix[y][x] * 16;
+            data[index] = threshold;     // R
+            data[index + 1] = threshold; // G
+            data[index + 2] = threshold; // B
+            data[index + 3] = 255;       // A
+        }
+    }
+
+    this.ditherPattern = pattern;
+}
+
+private setupResizeHandler(): void {
+    window.addEventListener('resize', () => {
+        this.resizeCanvas();
+    });
+}
+
+private resizeCanvas(): void {
+    const rect = this.canvas.getBoundingClientRect();
+    this.width = rect.width * this.pixelRatio;
+    this.height = rect.height * this.pixelRatio;
+
+    this.canvas.width = this.width;
+    this.canvas.height = this.height;
+
+    this.canvas.style.width = rect.width + 'px';
+    this.canvas.style.height = rect.height + 'px';
+
+    // Restore rendering settings after resize
+    this.ctx.imageSmoothingEnabled = false;
+    this.ctx.scale(this.pixelRatio, this.pixelRatio);
+}
+
+// Layer management
+addToLayer(entity: RenderableEntity, layer: 'background' | 'main' | 'effects' | 'ui'): void {
+    switch (layer) {
+        case 'background':
+            this.backgroundLayer.push(entity);
+            break;
+        case 'main':
+            this.mainLayer.push(entity);
+            break;
+        case 'effects':
+            this.effectsLayer.push(entity);
+            break;
+        case 'ui':
+            this.uiLayer.push(entity);
+            break;
+    }
+}
+
+clearLayers(): void {
+    this.backgroundLayer = [];
+    this.mainLayer = [];
+    this.effectsLayer = [];
+    this.uiLayer = [];
+}
+
+// Main render function
+render(camera: Camera): void {
+    // Clear canvas with deep space color
+    this.ctx.fillStyle = GameConfig.COLORS.BG_PRIMARY;
+    this.ctx.fillRect(0, 0, this.width / this.pixelRatio, this.height / this.pixelRatio);
+
+    // Render all layers in order
+    this.renderLayer(this.backgroundLayer, camera);
+    this.renderLayer(this.mainLayer, camera);
+    this.renderLayer(this.effectsLayer, camera);
+    this.renderLayer(this.uiLayer, camera);
+
+    // Apply post-processing effects
+    if (this.scanlineEffect) {
+        this.applyScanlines();
+    }
+}
+
+private renderLayer(entities: RenderableEntity[], camera: Camera): void {
+    entities.forEach(entity => {
+        this.ctx.save();
+        entity.render(this, camera);
+        this.ctx.restore();
+    });
+}
+
+// 16-bit specific rendering methods
+drawPixelArt(
+    x: number, 
+    y: number, 
+    width: number, 
+    height: number, 
+    color: string,
+    dithered: boolean = false
+): void {
+    this.ctx.fillStyle = color;
+    
+    if (dithered && this.ditherPattern) {
+        this.applyDithering(x, y, width, height, color);
+    } else {
+        this.ctx.fillRect(Math.floor(x), Math.floor(y), Math.ceil(width), Math.ceil(height));
+    }
+}
+
+drawSprite(
+    sprite: HTMLImageElement | HTMLCanvasElement,
+    sx: number, sy: number, sw: number, sh: number,
+    dx: number, dy: number, dw: number, dh: number
+): void {
+    this.ctx.drawImage(
+        sprite,
+        Math.floor(sx), Math.floor(sy), Math.ceil(sw), Math.ceil(sh),
+        Math.floor(dx), Math.floor(dy), Math.ceil(dw), Math.ceil(dh)
+    );
+}
+
+drawLine(x1: number, y1: number, x2: number, y2: number, color: string, thickness: number = 1): void {
+    this.ctx.strokeStyle = color;
+    this.ctx.lineWidth = thickness;
+    this.ctx.beginPath();
+    this.ctx.moveTo(Math.floor(x1), Math.floor(y1));
+    this.ctx.lineTo(Math.floor(x2), Math.floor(y2));
+    this.ctx.stroke();
+}
+
+drawCircle(x: number, y: number, radius: number, color: string, filled: boolean = true): void {
+    this.ctx.beginPath();
+    this.ctx.arc(Math.floor(x), Math.floor(y), radius, 0, Math.PI * 2);
+    
+    if (filled) {
+        this.ctx.fillStyle = color;
+        this.ctx.fill();
+    } else {
+        this.ctx.strokeStyle = color;
+        this.ctx.stroke();
+    }
+}
+
+drawText(text: string, x: number, y: number, color: string, size: number = 8): void {
+    this.ctx.fillStyle = color;
+    this.ctx.font = `${size}px 'Press Start 2P', monospace`;
+    this.ctx.textAlign = 'left';
+    this.ctx.textBaseline = 'top';
+    this.ctx.fillText(text, Math.floor(x), Math.floor(y));
+}
+
+// Advanced 16-bit effects
+drawGradientRect(
+    x: number, y: number, width: number, height: number,
+    color1: string, color2: string, horizontal: boolean = true
+): void {
+    const gradient = this.ctx.createLinearGradient(
+        x, y,
+        horizontal ? x + width : x,
+        horizontal ? y : y + height
+    );
+    gradient.addColorStop(0, color1);
+    gradient.addColorStop(1, color2);
+    
+    this.ctx.fillStyle = gradient;
+    this.ctx.fillRect(Math.floor(x), Math.floor(y), Math.ceil(width), Math.ceil(height));
+}
+
+drawRadialGradient(
+    x: number, y: number, innerRadius: number, outerRadius: number,
+    innerColor: string, outerColor: string
+): void {
+    const gradient = this.ctx.createRadialGradient(x, y, innerRadius, x, y, outerRadius);
+    gradient.addColorStop(0, innerColor);
+    gradient.addColorStop(1, outerColor);
+    
+    this.ctx.fillStyle = gradient;
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+    this.ctx.fill();
+}
+
+private applyDithering(x: number, y: number, width: number, height: number, color: string): void {
+    // Simple ordered dithering implementation
+    const imageData = this.ctx.getImageData(x, y, width, height);
+    const data = imageData.data;
+    const rgb = this.hexToRgb(color);
+    
+    if (!rgb) return;
+
+    for (let py = 0; py < height; py++) {
+        for (let px = 0; px < width; px++) {
+            const index = (py * width + px) * 4;
+            const ditherValue = ((px & 3) + (py & 3) * 4) * 16;
+            
+            // Apply dithering threshold
+            const threshold = ditherValue / 255;
+            const alpha = threshold * 0.5 + 0.5;
+            
+            data[index] = rgb.r * alpha;
+            data[index + 1] = rgb.g * alpha;
+            data[index + 2] = rgb.b * alpha;
+            data[index + 3] = 255;
+        }
+    }
+    
+    this.ctx.putImageData(imageData, x, y);
+}
+
+private applyScanlines(): void {
+    this.ctx.globalCompositeOperation = 'multiply';
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+    
+    for (let y = 0; y < this.height / this.pixelRatio; y += 2) {
+        this.ctx.fillRect(0, y, this.width / this.pixelRatio, 1);
+    }
+    
+    this.ctx.globalCompositeOperation = 'source-over';
+}
+
+// Utility functions
+private hexToRgb(hex: string): {r: number, g: number, b: number} | null {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : null;
+}
+
+// Screen space to world space conversion helpers
+screenToWorld(screenPos: Vector2, camera: Camera): Vector2 {
+    return new Vector2(
+        screenPos.x + camera.x,
+        screenPos.y + camera.y
+    );
+}
+
+worldToScreen(worldPos: Vector2, camera: Camera): Vector2 {
+    return new Vector2(
+        worldPos.x - camera.x,
+        worldPos.y - camera.y
+    );
+}
+
+isOnScreen(worldPos: Vector2, camera: Camera, margin: number = 50): boolean {
+    const screenPos = this.worldToScreen(worldPos, camera);
+    return screenPos.x > -margin && 
+           screenPos.x < this.width / this.pixelRatio + margin &&
+           screenPos.y > -margin && 
+           screenPos.y < this.height / this.pixelRatio + margin;
+}
+
+// Getters
+getWidth(): number { return this.width / this.pixelRatio; }
+getHeight(): number { return this.height / this.pixelRatio; }
+getCanvas(): HTMLCanvasElement { return this.canvas; }
+getContext(): CanvasRenderingContext2D { return this.ctx; }
+
+// Post-processing settings
+setScanlineEffect(enabled: boolean): void { this.scanlineEffect = enabled; }
+setCrtCurvature(enabled: boolean): void { this.crtCurvature = enabled; }
+```
+
+}
+
+export default Renderer;

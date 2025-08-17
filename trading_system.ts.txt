@@ -1,0 +1,1226 @@
+    // Economic parameters
+    private baseInflation: number;
+    private volatility: number;
+    private economicEvents: Map<string, EconomicEvent>;
+
+    // Color palette
+    private colors = {
+        background: '#201127',
+        panel: '#1b1e34',
+        text: '#E2DFD0',
+        textSecondary: '#A27B5C',
+        accent: '#F97300',
+        success: '#6aaf9d',
+        warning: '#ec9a6d',
+        danger: '#d9626b',
+        profit: '#94c5ac',
+        loss: '#c24b6e',
+        neutral: '#7077A1'
+    };
+
+    constructor(canvas: HTMLCanvasElement, playerInventory: any) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d')!;
+        this.ctx.imageSmoothingEnabled = false;
+        this.markets = new Map();
+        this.tradeRoutes = [];
+        this.playerInventory = playerInventory;
+        this.playerCredits = 50000; // Starting credits
+        this.currentMarket = null;
+        this.selectedItem = null;
+        this.tradeMode = 'buy';
+        this.isVisible = false;
+        this.scrollOffset = 0;
+        this.animationTime = 0;
+
+        this.baseInflation = 0.02;
+        this.volatility = 0.15;
+        this.economicEvents = new Map();
+
+        this.initializeMarkets();
+        this.generateTradeRoutes();
+        this.setupEventListeners();
+    }
+
+    private initializeMarkets(): void {
+        // Generate diverse trading stations
+        const stationConfigs = [
+            {
+                id: 'sol_trade_central',
+                name: 'Sol Trade Central',
+                type: StationType.TRADING_STATION,
+                position: { x: 0, y: 0 },
+                systemId: 'sol',
+                faction: 'united_systems',
+                specialization: [ItemCategory.TRADE_GOODS, ItemCategory.ELECTRONICS],
+                securityLevel: 9
+            },
+            {
+                id: 'mars_mining_depot',
+                name: 'Mars Mining Depot',
+                type: StationType.MINING_STATION,
+                position: { x: 320, y: 0 },
+                systemId: 'sol',
+                faction: 'mining_guild',
+                specialization: [ItemCategory.ELEMENTS, ItemCategory.BUILDING_MATERIALS],
+                securityLevel: 7
+            },
+            {
+                id: 'europa_bio_facility',
+                name: 'Europa Bio Facility',
+                type: StationType.RESEARCH,
+                position: { x: 250, y: 100 },
+                systemId: 'sol',
+                faction: 'science_consortium',
+                specialization: [ItemCategory.BIOLOGICAL, ItemCategory.RATIONS],
+                securityLevel: 8
+            },
+            {
+                id: 'asteroid_belt_refinery',
+                name: 'Asteroid Belt Refinery',
+                type: StationType.REFINERY,
+                position: { x: 400, y: 0 },
+                systemId: 'sol',
+                faction: 'industrial_union',
+                specialization: [ItemCategory.FUEL, ItemCategory.COMPONENTS],
+                securityLevel: 5
+            },
+            {
+                id: 'outer_rim_blackmarket',
+                name: 'Outer Rim Trading Post',
+                type: StationType.BLACK_MARKET,
+                position: { x: 800, y: 200 },
+                systemId: 'outer_rim',
+                faction: 'independents',
+                specialization: [ItemCategory.ALIEN_ARTIFACTS, ItemCategory.WEAPONS],
+                securityLevel: 2
+            }
+        ];
+
+        stationConfigs.forEach(config => {
+            const market: Market = {
+                stationId: config.id,
+                stationName: config.name,
+                stationType: config.type,
+                position: config.position,
+                systemId: config.systemId,
+                buyOrders: new Map(),
+                sellOrders: new Map(),
+                reputation: 0,
+                securityLevel: config.securityLevel,
+                faction: config.faction,
+                specialization: config.specialization,
+                lastUpdate: Date.now()
+            };
+
+            this.generateMarketOrders(market);
+            this.markets.set(config.id, market);
+        });
+    }
+
+    private generateMarketOrders(market: Market): void {
+        // Generate buy orders (station wants to purchase)
+        this.generateBuyOrders(market);
+        
+        // Generate sell orders (station wants to sell)
+        this.generateSellOrders(market);
+    }
+
+    private generateBuyOrders(market: Market): void {
+        const commonItems = [
+            { id: 'iron_ore', name: 'Iron Ore', category: ItemCategory.ELEMENTS, basePrice: 15 },
+            { id: 'hydrogen_fuel', name: 'Hydrogen Fuel', category: ItemCategory.FUEL, basePrice: 8 },
+            { id: 'water', name: 'Water', category: ItemCategory.RESOURCES, basePrice: 12 },
+            { id: 'carbon_fiber', name: 'Carbon Fiber', category: ItemCategory.COMPONENTS, basePrice: 45 },
+            { id: 'rare_earth', name: 'Rare Earth Elements', category: ItemCategory.ELEMENTS, basePrice: 120 }
+        ];
+
+        commonItems.forEach(item => {
+            if (this.stationWantsItem(market, item.category)) {
+                const demand = this.calculateDemand(market, item.category);
+                const priceModifier = this.getStationPriceModifier(market, item.category, 'buy');
+                
+                const order: TradeOrder = {
+                    itemId: item.id,
+                    itemName: item.name,
+                    category: item.category,
+                    basePrice: item.basePrice,
+                    currentPrice: Math.round(item.basePrice * priceModifier),
+                    quantity: Math.round(demand * (50 + Math.random() * 100)),
+                    maxQuantity: Math.round(demand * 200),
+                    priceFluctuation: 0.1 + Math.random() * 0.2,
+                    demand: demand,
+                    supply: 0.3 + Math.random() * 0.4,
+                    refreshRate: 300000 + Math.random() * 600000, // 5-15 minutes
+                    restrictions: this.getItemRestrictions(item.category, market)
+                };
+
+                market.buyOrders.set(item.id, order);
+            }
+        });
+
+        // Add specialized items based on station type
+        this.addSpecializedBuyOrders(market);
+    }
+
+    private generateSellOrders(market: Market): void {
+        const sellItems = this.getStationSellItems(market);
+        
+        sellItems.forEach(item => {
+            const supply = this.calculateSupply(market, item.category);
+            const priceModifier = this.getStationPriceModifier(market, item.category, 'sell');
+            
+            const order: TradeOrder = {
+                itemId: item.id,
+                itemName: item.name,
+                category: item.category,
+                basePrice: item.basePrice,
+                currentPrice: Math.round(item.basePrice * priceModifier),
+                quantity: Math.round(supply * (30 + Math.random() * 70)),
+                maxQuantity: Math.round(supply * 150),
+                priceFluctuation: 0.08 + Math.random() * 0.15,
+                demand: 0.4 + Math.random() * 0.3,
+                supply: supply,
+                refreshRate: 240000 + Math.random() * 480000, // 4-12 minutes
+                restrictions: this.getItemRestrictions(item.category, market)
+            };
+
+            market.sellOrders.set(item.id, order);
+        });
+    }
+
+    private getStationSellItems(market: Market): any[] {
+        const baseItems = [
+            { id: 'basic_rations', name: 'Basic Rations', category: ItemCategory.RATIONS, basePrice: 20 },
+            { id: 'fuel_cells', name: 'Fuel Cells', category: ItemCategory.FUEL, basePrice: 35 },
+            { id: 'repair_kits', name: 'Repair Kits', category: ItemCategory.COMPONENTS, basePrice: 80 }
+        ];
+
+        const specializedItems = new Map([
+            [StationType.MINING_STATION, [
+                { id: 'mining_laser', name: 'Mining Laser', category: ItemCategory.COMPONENTS, basePrice: 2500 },
+                { id: 'ore_processor', name: 'Ore Processor', category: ItemCategory.COMPONENTS, basePrice: 5000 },
+                { id: 'refined_metals', name: 'Refined Metals', category: ItemCategory.BUILDING_MATERIALS, basePrice: 150 }
+            ]],
+            [StationType.RESEARCH, [
+                { id: 'research_data', name: 'Research Data', category: ItemCategory.DATA, basePrice: 800 },
+                { id: 'bio_samples', name: 'Biological Samples', category: ItemCategory.BIOLOGICAL, basePrice: 400 },
+                { id: 'lab_equipment', name: 'Laboratory Equipment', category: ItemCategory.ELECTRONICS, basePrice: 3000 }
+            ]],
+            [StationType.SHIPYARD, [
+                { id: 'ship_hull_plating', name: 'Hull Plating', category: ItemCategory.BUILDING_MATERIALS, basePrice: 800 },
+                { id: 'navigation_computer', name: 'Navigation Computer', category: ItemCategory.ELECTRONICS, basePrice: 4500 },
+                { id: 'engine_components', name: 'Engine Components', category: ItemCategory.COMPONENTS, basePrice: 1200 }
+            ]],
+            [StationType.BLACK_MARKET, [
+                { id: 'illegal_weapons', name: 'Illegal Weapons', category: ItemCategory.WEAPONS, basePrice: 8000 },
+                { id: 'stolen_artifacts', name: 'Stolen Artifacts', category: ItemCategory.ALIEN_ARTIFACTS, basePrice: 15000 },
+                { id: 'contraband', name: 'Contraband', category: ItemCategory.TRADE_GOODS, basePrice: 600 }
+            ]]
+        ]);
+
+        const stationSpecific = specializedItems.get(market.stationType) || [];
+        return [...baseItems, ...stationSpecific];
+    }
+
+    private stationWantsItem(market: Market, category: ItemCategory): boolean {
+        // All stations want basic supplies
+        if ([ItemCategory.FUEL, ItemCategory.RATIONS, ItemCategory.COMPONENTS].includes(category)) {
+            return true;
+        }
+
+        // Specialized demand
+        return market.specialization.includes(category) || Math.random() < 0.3;
+    }
+
+    private calculateDemand(market: Market, category: ItemCategory): number {
+        let baseDemand = 0.5;
+        
+        if (market.specialization.includes(category)) {
+            baseDemand += 0.3;
+        }
+        
+        // Station type modifiers
+        switch (market.stationType) {
+            case StationType.MINING_STATION:
+                if (category === ItemCategory.FUEL || category === ItemCategory.COMPONENTS) {
+                    baseDemand += 0.2;
+                }
+                break;
+            case StationType.RESEARCH:
+                if (category === ItemCategory.BIOLOGICAL || category === ItemCategory.ELEMENTS) {
+                    baseDemand += 0.25;
+                }
+                break;
+            case StationType.INDUSTRIAL:
+                if (category === ItemCategory.ELEMENTS || category === ItemCategory.BUILDING_MATERIALS) {
+                    baseDemand += 0.3;
+                }
+                break;
+        }
+
+        return Math.min(1.0, baseDemand + (Math.random() - 0.5) * 0.2);
+    }
+
+    private calculateSupply(market: Market, category: ItemCategory): number {
+        let baseSupply = 0.4;
+        
+        if (market.specialization.includes(category)) {
+            baseSupply += 0.4;
+        }
+
+        // Security level affects supply of illegal items
+        if (category === ItemCategory.WEAPONS && market.securityLevel < 5) {
+            baseSupply += 0.2;
+        }
+
+        return Math.min(1.0, baseSupply + (Math.random() - 0.5) * 0.15);
+    }
+
+    private getStationPriceModifier(market: Market, category: ItemCategory, type: 'buy' | 'sell'): number {
+        let modifier = 1.0;
+
+        // Base supply/demand modifier
+        if (market.specialization.includes(category)) {
+            if (type === 'buy') {
+                modifier += 0.15; // Stations pay more for specialized items
+            } else {
+                modifier -= 0.1; // But sell them cheaper
+            }
+        }
+
+        // Security level affects prices
+        const securityModifier = (10 - market.securityLevel) * 0.02;
+        if (category === ItemCategory.WEAPONS || category === ItemCategory.ALIEN_ARTIFACTS) {
+            modifier += securityModifier;
+        }
+
+        // Random market fluctuation
+        modifier += (Math.random() - 0.5) * this.volatility;
+
+        return Math.max(0.3, modifier);
+    }
+
+    private getItemRestrictions(category: ItemCategory, market: Market): TradeRestriction[] {
+        const restrictions: TradeRestriction[] = [];
+
+        if (category === ItemCategory.WEAPONS) {
+            if (market.securityLevel > 7) {
+                restrictions.push(TradeRestriction.LICENSE_REQUIRED);
+            }
+            if (market.stationType === StationType.MILITARY) {
+                restrictions.push(TradeRestriction.MILITARY_GRADE);
+            }
+        }
+
+        if (category === ItemCategory.ALIEN_ARTIFACTS) {
+            restrictions.push(TradeRestriction.REPUTATION_MINIMUM);
+            if (market.securityLevel < 4) {
+                restrictions.push(TradeRestriction.ILLEGAL);
+            }
+        }
+
+        if (market.stationType === StationType.BLACK_MARKET) {
+            // Black markets have fewer restrictions but higher risks
+            return [TradeRestriction.NONE];
+        }
+
+        return restrictions;
+    }
+
+    private addSpecializedBuyOrders(market: Market): void {
+        // Add high-value specialized items that stations desperately want
+        const specializedWants = new Map([
+            [StationType.RESEARCH, [
+                { id: 'alien_dna', name: 'Alien DNA', category: ItemCategory.BIOLOGICAL, basePrice: 5000 },
+                { id: 'quantum_crystals', name: 'Quantum Crystals', category: ItemCategory.ALIEN_ARTIFACTS, basePrice: 12000 }
+            ]],
+            [StationType.MILITARY, [
+                { id: 'weapon_grade_uranium', name: 'Weapons-Grade Uranium', category: ItemCategory.ELEMENTS, basePrice: 8000 },
+                { id: 'armor_plating', name: 'Advanced Armor Plating', category: ItemCategory.BUILDING_MATERIALS, basePrice: 3000 }
+            ]],
+            [StationType.BLACK_MARKET, [
+                { id: 'stolen_data', name: 'Stolen Corporate Data', category: ItemCategory.DATA, basePrice: 15000 },
+                { id: 'illegal_stimulants', name: 'Illegal Stimulants', category: ItemCategory.BIOLOGICAL, basePrice: 2500 }
+            ]]
+        ]);
+
+        const stationWants = specializedWants.get(market.stationType);
+        if (stationWants) {
+            stationWants.forEach(item => {
+                if (Math.random() < 0.7) { // 70% chance station wants this item
+                    const order: TradeOrder = {
+                        itemId: item.id,
+                        itemName: item.name,
+                        category: item.category,
+                        basePrice: item.basePrice,
+                        currentPrice: Math.round(item.basePrice * (1.1 + Math.random() * 0.3)),
+                        quantity: Math.round(5 + Math.random() * 15),
+                        maxQuantity: Math.round(25 + Math.random() * 25),
+                        priceFluctuation: 0.2 + Math.random() * 0.3,
+                        demand: 0.8 + Math.random() * 0.2,
+                        supply: 0.1 + Math.random() * 0.2,
+                        refreshRate: 900000 + Math.random() * 1800000, // 15-45 minutes
+                        restrictions: this.getItemRestrictions(item.category, market)
+                    };
+
+                    market.buyOrders.set(item.id, order);
+                }
+            });
+        }
+    }
+
+    private generateTradeRoutes(): void {
+        this.tradeRoutes = [];
+        const marketArray = Array.from(this.markets.values());
+
+        for (let i = 0; i < marketArray.length; i++) {
+            for (let j = i + 1; j < marketArray.length; j++) {
+                const startMarket = marketArray[i];
+                const endMarket = marketArray[j];
+                
+                this.findProfitableRoutes(startMarket, endMarket);
+                this.findProfitableRoutes(endMarket, startMarket);
+            }
+        }
+
+        // Sort by profit margin
+        this.tradeRoutes.sort((a, b) => b.profitMargin - a.profitMargin);
+    }
+
+    private findProfitableRoutes(startMarket: Market, endMarket: Market): void {
+        startMarket.sellOrders.forEach((sellOrder, itemId) => {
+            const buyOrder = endMarket.buyOrders.get(itemId);
+            if (buyOrder && buyOrder.currentPrice > sellOrder.currentPrice) {
+                const profit = buyOrder.currentPrice - sellOrder.currentPrice;
+                const profitMargin = (profit / sellOrder.currentPrice) * 100;
+                
+                if (profitMargin > 5) { // Only routes with >5% profit
+                    const distance = Math.sqrt(
+                        Math.pow(endMarket.position.x - startMarket.position.x, 2) +
+                        Math.pow(endMarket.position.y - startMarket.position.y, 2)
+                    );
+
+                    const route: TradeRoute = {
+                        id: `${startMarket.stationId}_${endMarket.stationId}_${itemId}`,
+                        startStation: startMarket.stationId,
+                        endStation: endMarket.stationId,
+                        itemId: itemId,
+                        buyPrice: sellOrder.currentPrice,
+                        sellPrice: buyOrder.currentPrice,
+                        profit: profit,
+                        profitMargin: profitMargin,
+                        distance: distance,
+                        profitPerUnit: profit,
+                        riskLevel: this.calculateRouteRisk(startMarket, endMarket, itemId),
+                        updated: Date.now()
+                    };
+
+                    this.tradeRoutes.push(route);
+                }
+            }
+        });
+    }
+
+    private calculateRouteRisk(startMarket: Market, endMarket: Market, itemId: string): number {
+        let risk = 0;
+
+        // Distance risk
+        const distance = Math.sqrt(
+            Math.pow(endMarket.position.x - startMarket.position.x, 2) +
+            Math.pow(endMarket.position.y - startMarket.position.y, 2)
+        );
+        risk += Math.min(5, distance / 200);
+
+        // Security risk
+        const avgSecurity = (startMarket.securityLevel + endMarket.securityLevel) / 2;
+        risk += (10 - avgSecurity) / 2;
+
+        // Item risk
+        const sellOrder = startMarket.sellOrders.get(itemId);
+        if (sellOrder) {
+            if (sellOrder.restrictions.includes(TradeRestriction.ILLEGAL)) {
+                risk += 3;
+            }
+            if (sellOrder.restrictions.includes(TradeRestriction.HAZARDOUS)) {
+                risk += 2;
+            }
+        }
+
+        return Math.max(1, Math.min(10, risk));
+    }
+
+    private setupEventListeners(): void {
+        this.canvas.addEventListener('click', (e) => {
+            if (!this.isVisible) return;
+            
+            const rect = this.canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            this.handleClick(x, y);
+        });
+
+        this.canvas.addEventListener('wheel', (e) => {
+            if (!this.isVisible) return;
+            
+            e.preventDefault();
+            const scrollDirection = e.deltaY > 0 ? 1 : -1;
+            this.scrollOffset = Math.max(0, this.scrollOffset + scrollDirection);
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (!this.isVisible) return;
+            
+            switch (e.key) {
+                case 'Escape':
+                    this.hide();
+                    break;
+                case '1':
+                    this.tradeMode = 'buy';
+                    break;
+                case '2':
+                    this.tradeMode = 'sell';
+                    break;
+                case '3':
+                    this.tradeMode = 'routes';
+                    break;
+            }
+        });
+    }
+
+    private handleClick(x: number, y: number): void {
+        // Check mode tabs
+        if (y >= 60 && y <= 90) {
+            if (x >= 50 && x <= 150) this.tradeMode = 'buy';
+            else if (x >= 160 && x <= 260) this.tradeMode = 'sell';
+            else if (x >= 270 && x <= 370) this.tradeMode = 'routes';
+            return;
+        }
+
+        // Check trade items/routes list
+        const listStartY = 150;
+        if (y >= listStartY && y <= listStartY + 400) {
+            const itemIndex = Math.floor((y - listStartY) / 50) + this.scrollOffset;
+            
+            if (this.tradeMode === 'routes') {
+                if (itemIndex >= 0 && itemIndex < this.tradeRoutes.length) {
+                    console.log(`Selected trade route: ${this.tradeRoutes[itemIndex].id}`);
+                }
+            } else {
+                const items = this.getCurrentTradeItems();
+                if (itemIndex >= 0 && itemIndex < items.length) {
+                    this.selectedItem = items[itemIndex].itemId;
+                }
+            }
+            return;
+        }
+
+        // Check action buttons
+        if (this.selectedItem && this.tradeMode !== 'routes') {
+            if (x >= this.canvas.width - 200 && x <= this.canvas.width - 20) {
+                if (y >= this.canvas.height - 120 && y <= this.canvas.height - 90) {
+                    this.executeTrade(1);
+                } else if (y >= this.canvas.height - 80 && y <= this.canvas.height - 50) {
+                    this.executeTrade(10);
+                } else if (y >= this.canvas.height - 40 && y <= this.canvas.height - 10) {
+                    this.executeMaxTrade();
+                }
+            }
+        }
+    }
+
+    private getCurrentTradeItems(): TradeOrder[] {
+        if (!this.currentMarket) return [];
+        
+        if (this.tradeMode === 'buy') {
+            return Array.from(this.currentMarket.sellOrders.values());
+        } else {
+            return Array.from(this.currentMarket.buyOrders.values());
+        }
+    }
+
+    public update(deltaTime: number): void {
+        this.animationTime += deltaTime;
+        
+        // Update market prices
+        this.updateMarketPrices(deltaTime);
+        
+        // Refresh trade routes periodically
+        if (Math.floor(this.animationTime) % 30 === 0) { // Every 30 seconds
+            this.generateTradeRoutes();
+        }
+    }
+
+    private updateMarketPrices(deltaTime: number): void {
+        this.markets.forEach(market => {
+            // Update buy orders
+            market.buyOrders.forEach(order => {
+                this.updateOrderPrice(order, deltaTime);
+            });
+            
+            // Update sell orders
+            market.sellOrders.forEach(order => {
+                this.updateOrderPrice(order, deltaTime);
+            });
+        });
+    }
+
+    private updateOrderPrice(order: TradeOrder, deltaTime: number): void {
+        // Random price fluctuation
+        const fluctuation = (Math.random() - 0.5) * order.priceFluctuation * deltaTime;
+        const newPrice = order.currentPrice * (1 + fluctuation);
+        
+        // Keep prices within reasonable bounds
+        const minPrice = order.basePrice * 0.5;
+        const maxPrice = order.basePrice * 2.0;
+        
+        order.currentPrice = Math.max(minPrice, Math.min(maxPrice, Math.round(newPrice)));
+        
+        // Simulate supply/demand changes
+        if (Math.random() < 0.01) { // 1% chance per update
+            order.quantity = Math.max(0, order.quantity + Math.round((Math.random() - 0.5) * 20));
+            order.quantity = Math.min(order.maxQuantity, order.quantity);
+        }
+    }
+
+    public render(): void {
+        if (!this.isVisible) return;
+
+        // Background
+        this.ctx.fillStyle = 'rgba(32, 17, 39, 0.95)';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Title and station info
+        this.renderTitleBar();
+        
+        // Mode tabs
+        this.renderModeTabs();
+        
+        // Market info
+        if (this.currentMarket) {
+            this.renderMarketInfo();
+        }
+        
+        // Main content based on mode
+        switch (this.tradeMode) {
+            case 'buy':
+            case 'sell':
+                this.renderTradeItems();
+                break;
+            case 'routes':
+                this.renderTradeRoutes();
+                break;
+        }
+        
+        // Action buttons
+        if (this.selectedItem && this.tradeMode !== 'routes') {
+            this.renderTradeButtons();
+        }
+        
+        // Player credits
+        this.renderPlayerInfo();
+        
+        // Scan lines effect
+        this.renderScanLines();
+    }
+
+    private renderTitleBar(): void {
+        this.ctx.fillStyle = this.colors.accent;
+        this.ctx.font = 'bold 20px monospace';
+        this.ctx.textAlign = 'center';
+        const title = this.currentMarket ? 
+            `TRADING - ${this.currentMarket.stationName.toUpperCase()}` : 
+            'TRADING INTERFACE';
+        this.ctx.fillText(title, this.canvas.width / 2, 35);
+
+        // Close button
+        this.ctx.fillStyle = this.colors.danger;
+        this.ctx.font = 'bold 16px monospace';
+        this.ctx.textAlign = 'right';
+        this.ctx.fillText('[X]', this.canvas.width - 20, 35);
+    }
+
+    private renderModeTabs(): void {
+        const tabs = [
+            { name: 'BUY', mode: 'buy', x: 50 },
+            { name: 'SELL', mode: 'sell', x: 160 },
+            { name: 'ROUTES', mode: 'routes', x: 270 }
+        ];
+
+        tabs.forEach(tab => {
+            const isActive = tab.mode === this.tradeMode;
+            
+            this.ctx.fillStyle = isActive ? this.colors.accent : this.colors.panel;
+            this.ctx.fillRect(tab.x, 60, 100, 30);
+            
+            this.ctx.strokeStyle = this.colors.text;
+            this.ctx.strokeRect(tab.x, 60, 100, 30);
+            
+            this.ctx.fillStyle = isActive ? this.colors.background : this.colors.text;
+            this.ctx.font = 'bold 12px monospace';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(tab.name, tab.x + 50, 80);
+        });
+    }
+
+    private renderMarketInfo(): void {
+        if (!this.currentMarket) return;
+        
+        const infoY = 120;
+        this.ctx.fillStyle = this.colors.text;
+        this.ctx.font = '10px monospace';
+        this.ctx.textAlign = 'left';
+        
+        const info = [
+            `Station: ${this.currentMarket.stationName}`,
+            `Type: ${this.currentMarket.stationType.replace('_', ' ').toUpperCase()}`,
+            `Security: ${this.currentMarket.securityLevel}/10`,
+            `Faction: ${this.currentMarket.faction.replace('_', ' ').toUpperCase()}`,
+            `Reputation: ${this.currentMarket.reputation.toFixed(1)}`
+        ];
+        
+        info.forEach((text, index) => {
+            this.ctx.fillText(text, 50 + (index * 150), infoY);
+        });
+    }
+
+    private renderTradeItems(): void {
+        const items = this.getCurrentTradeItems();
+        const startY = 150;
+        const itemHeight = 50;
+        
+        // Headers
+        this.ctx.fillStyle = this.colors.panel;
+        this.ctx.fillRect(20, startY - 25, this.canvas.width - 240, 25);
+        
+        this.ctx.fillStyle = this.colors.text;
+        this.ctx.font = 'bold 8px monospace';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText('ITEM', 30, startY - 10);
+        this.ctx.fillText('PRICE', 250, startY - 10);
+        this.ctx.fillText('QTY', 320, startY - 10);
+        this.ctx.fillText('DEMAND/SUPPLY', 380, startY - 10);
+        
+        // Items list
+        const visibleItems = items.slice(this.scrollOffset, this.scrollOffset + 8);
+        
+        visibleItems.forEach((item, index) => {
+            const y = startY + index * itemHeight;
+            const isSelected = item.itemId === this.selectedItem;
+            
+            // Background
+            if (isSelected) {
+                this.ctx.fillStyle = 'rgba(249, 115, 0, 0.3)';
+                this.ctx.fillRect(20, y, this.canvas.width - 240, itemHeight);
+            }
+            
+            // Item name
+            this.ctx.fillStyle = this.colors.text;
+            this.ctx.font = 'bold 10px monospace';
+            this.ctx.textAlign = 'left';
+            this.ctx.fillText(item.itemName, 30, y + 15);
+            
+            // Price with trend indicator
+            const priceColor = item.currentPrice > item.basePrice ? this.colors.profit : 
+                              item.currentPrice < item.basePrice ? this.colors.loss : this.colors.neutral;
+            this.ctx.fillStyle = priceColor;
+            this.ctx.fillText(`${item.currentPrice}¢`, 250, y + 15);
+            
+            // Quantity
+            this.ctx.fillStyle = this.colors.text;
+            this.ctx.fillText(item.quantity.toString(), 320, y + 15);
+            
+            // Demand/Supply bar
+            const barWidth = 80;
+            const barHeight = 8;
+            const barX = 380;
+            const barY = y + 8;
+            
+            this.ctx.fillStyle = this.colors.panel;
+            this.ctx.fillRect(barX, barY, barWidth, barHeight);
+            
+            const fillWidth = this.tradeMode === 'buy' ? 
+                barWidth * item.supply : barWidth * item.demand;
+            const fillColor = this.tradeMode === 'buy' ? this.colors.success : this.colors.warning;
+            
+            this.ctx.fillStyle = fillColor;
+            this.ctx.fillRect(barX, barY, fillWidth, barHeight);
+            
+            // Category and restrictions
+            this.ctx.fillStyle = this.colors.textSecondary;
+            this.ctx.font = '8px monospace';
+            this.ctx.fillText(item.category.toUpperCase(), 30, y + 30);
+            
+            if (item.restrictions.length > 0 && item.restrictions[0] !== TradeRestriction.NONE) {
+                const restrictionText = item.restrictions.map(r => r.replace('_', ' ')).join(', ');
+                this.ctx.fillStyle = this.colors.danger;
+                this.ctx.fillText(`⚠ ${restrictionText.toUpperCase()}`, 30, y + 42);
+            }
+        });
+        
+        // Scroll indicator
+        if (items.length > 8) {
+            const scrollBarX = this.canvas.width - 220;
+            const scrollBarY = startY;
+            const scrollBarHeight = 400;
+            
+            this.ctx.fillStyle = this.colors.panel;
+            this.ctx.fillRect(scrollBarX, scrollBarY, 10, scrollBarHeight);
+            
+            const thumbHeight = Math.max(20, (8 / items.length) * scrollBarHeight);
+            const thumbY = scrollBarY + (this.scrollOffset / (items.length - 8)) * (scrollBarHeight - thumbHeight);
+            
+            this.ctx.fillStyle = this.colors.accent;
+            this.ctx.fillRect(scrollBarX, thumbY, 10, thumbHeight);
+        }
+    }
+
+    private renderTradeRoutes(): void {
+        const startY = 150;
+        const routeHeight = 60;
+        
+        // Headers
+        this.ctx.fillStyle = this.colors.panel;
+        this.ctx.fillRect(20, startY - 25, this.canvas.width - 40, 25);
+        
+        this.ctx.fillStyle = this.colors.text;
+        this.ctx.font = 'bold 8px monospace';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText('ROUTE', 30, startY - 10);
+        this.ctx.fillText('ITEM', 200, startY - 10);
+        this.ctx.fillText('PROFIT', 320, startY - 10);
+        this.ctx.fillText('MARGIN', 400, startY - 10);
+        this.ctx.fillText('RISK', 480, startY - 10);
+        this.ctx.fillText('DISTANCE', 550, startY - 10);
+        
+        // Routes list
+        const visibleRoutes = this.tradeRoutes.slice(this.scrollOffset, this.scrollOffset + 6);
+        
+        visibleRoutes.forEach((route, index) => {
+            const y = startY + index * routeHeight;
+            
+            // Background with profitability indicator
+            const profitAlpha = Math.min(0.5, route.profitMargin / 50);
+            this.ctx.fillStyle = `rgba(148, 197, 172, ${profitAlpha})`;
+            this.ctx.fillRect(20, y, this.canvas.width - 40, routeHeight);
+            
+            // Route info
+            const startStation = this.markets.get(route.startStation);
+            const endStation = this.markets.get(route.endStation);
+            
+            if (startStation && endStation) {
+                this.ctx.fillStyle = this.colors.text;
+                this.ctx.font = 'bold 10px monospace';
+                this.ctx.textAlign = 'left';
+                this.ctx.fillText(startStation.stationName, 30, y + 15);
+                this.ctx.fillText('→', 30, y + 30);
+                this.ctx.fillText(endStation.stationName, 30, y + 45);
+            }
+            
+            // Item
+            const sellOrder = startStation?.sellOrders.get(route.itemId);
+            if (sellOrder) {
+                this.ctx.fillStyle = this.colors.text;
+                this.ctx.fillText(sellOrder.itemName, 200, y + 25);
+            }
+            
+            // Profit
+            this.ctx.fillStyle = this.colors.profit;
+            this.ctx.fillText(`+${route.profit}¢`, 320, y + 20);
+            this.ctx.fillText(`${route.profitMargin.toFixed(1)}%`, 400, y + 20);
+            
+            // Risk level
+            const riskColor = route.riskLevel <= 3 ? this.colors.success :
+                             route.riskLevel <= 6 ? this.colors.warning : this.colors.danger;
+            this.ctx.fillStyle = riskColor;
+            this.ctx.fillText(`${route.riskLevel}/10`, 480, y + 20);
+            
+            // Distance
+            this.ctx.fillStyle = this.colors.textSecondary;
+            this.ctx.fillText(`${route.distance.toFixed(0)} AU`, 550, y + 20);
+            
+            // Buy/Sell prices
+            this.ctx.fillStyle = this.colors.textSecondary;
+            this.ctx.font = '8px monospace';
+            this.ctx.fillText(`Buy: ${route.buyPrice}¢`, 200, y + 40);
+            this.ctx.fillText(`Sell: ${route.sellPrice}¢`, 200, y + 50);
+        });
+    }
+
+    private renderTradeButtons(): void {
+        if (!this.selectedItem || !this.currentMarket) return;
+        
+        const buttonWidth = 180;
+        const buttonHeight = 25;
+        const buttonX = this.canvas.width - 200;
+        
+        const item = this.tradeMode === 'buy' ? 
+            this.currentMarket.sellOrders.get(this.selectedItem) :
+            this.currentMarket.buyOrders.get(this.selectedItem);
+            
+        if (!item) return;
+        
+        // Buy/Sell 1 button
+        this.ctx.fillStyle = this.colors.success;
+        this.ctx.fillRect(buttonX, this.canvas.height - 120, buttonWidth, buttonHeight);
+        
+        this.ctx.strokeStyle = this.colors.text;
+        this.ctx.strokeRect(buttonX, this.canvas.height - 120, buttonWidth, buttonHeight);
+        
+        this.ctx.fillStyle = this.colors.background;
+        this.ctx.font = 'bold 10px monospace';
+        this.ctx.textAlign = 'center';
+        const action1 = this.tradeMode === 'buy' ? 'BUY 1' : 'SELL 1';
+        this.ctx.fillText(`${action1} (${item.currentPrice}¢)`, buttonX + buttonWidth / 2, this.canvas.height - 105);
+        
+        // Buy/Sell 10 button
+        this.ctx.fillStyle = this.colors.warning;
+        this.ctx.fillRect(buttonX, this.canvas.height - 80, buttonWidth, buttonHeight);
+        
+        this.ctx.strokeStyle = this.colors.text;
+        this.ctx.strokeRect(buttonX, this.canvas.height - 80, buttonWidth, buttonHeight);
+        
+        this.ctx.fillStyle = this.colors.background;
+        const action10 = this.tradeMode === 'buy' ? 'BUY 10' : 'SELL 10';
+        const price10 = item.currentPrice * 10;
+        this.ctx.fillText(`${action10} (${price10}¢)`, buttonX + buttonWidth / 2, this.canvas.height - 65);
+        
+        // Max button
+        this.ctx.fillStyle = this.colors.accent;
+        this.ctx.fillRect(buttonX, this.canvas.height - 40, buttonWidth, buttonHeight);
+        
+        this.ctx.strokeStyle = this.colors.text;
+        this.ctx.strokeRect(buttonX, this.canvas.height - 40, buttonWidth, buttonHeight);
+        
+        this.ctx.fillStyle = this.colors.background;
+        const maxAction = this.tradeMode === 'buy' ? 'BUY MAX' : 'SELL MAX';
+        const maxQuantity = this.tradeMode === 'buy' ? 
+            Math.min(item.quantity, Math.floor(this.playerCredits / item.currentPrice)) :
+            this.getPlayerItemQuantity(item.itemId);
+        this.ctx.fillText(`${maxAction} (${maxQuantity})`, buttonX + buttonWidth / 2, this.canvas.height - 25);
+    }
+
+    private renderPlayerInfo(): void {
+        this.ctx.fillStyle = this.colors.accent;
+        this.ctx.font = 'bold 12px monospace';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText(`CREDITS: ${this.playerCredits.toLocaleString()}¢`, 20, this.canvas.height - 20);
+        
+        // Cargo space used
+        const cargoMass = this.playerInventory.getCargoMass();
+        const maxCargo = 1000; // This should come from ship stats
+        this.ctx.fillStyle = this.colors.textSecondary;
+        this.ctx.font = '10px monospace';
+        this.ctx.fillText(`CARGO: ${cargoMass.toFixed(0)}/${maxCargo} kg`, 300, this.canvas.height - 20);
+    }
+
+    private renderScanLines(): void {
+        this.ctx.strokeStyle = 'rgba(95, 175, 157, 0.1)';
+        this.ctx.lineWidth = 1;
+        
+        for (let y = 0; y < this.canvas.height; y += 4) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, y);
+            this.ctx.lineTo(this.canvas.width, y);
+            this.ctx.stroke();
+        }
+    }
+
+    private executeTrade(quantity: number): void {
+        if (!this.selectedItem || !this.currentMarket) return;
+        
+        const item = this.tradeMode === 'buy' ? 
+            this.currentMarket.sellOrders.get(this.selectedItem) :
+            this.currentMarket.buyOrders.get(this.selectedItem);
+            
+        if (!item) return;
+        
+        if (this.tradeMode === 'buy') {
+            this.buyItem(item, quantity);
+        } else {
+            this.sellItem(item, quantity);
+        }
+    }
+
+    private executeMaxTrade(): void {
+        if (!this.selectedItem || !this.currentMarket) return;
+        
+        const item = this.tradeMode === 'buy' ? 
+            this.currentMarket.sellOrders.get(this.selectedItem) :
+            this.currentMarket.buyOrders.get(this.selectedItem);
+            
+        if (!item) return;
+        
+        let maxQuantity: number;
+        
+        if (this.tradeMode === 'buy') {
+            maxQuantity = Math.min(
+                item.quantity,
+                Math.floor(this.playerCredits / item.currentPrice)
+            );
+            this.buyItem(item, maxQuantity);
+        } else {
+            maxQuantity = this.getPlayerItemQuantity(item.itemId);
+            this.sellItem(item, maxQuantity);
+        }
+    }
+
+    private buyItem(item: TradeOrder, quantity: number): void {
+        const totalCost = item.currentPrice * quantity;
+        
+        if (this.playerCredits < totalCost) {
+            console.log('Insufficient credits');
+            return;
+        }
+        
+        if (item.quantity < quantity) {
+            console.log('Insufficient stock');
+            return;
+        }
+        
+        // Check cargo space
+        const requiredMass = quantity * 2.0; // Approximate mass per item
+        if (this.playerInventory.getCargoMass() + requiredMass > 1000) {
+            console.log('Insufficient cargo space');
+            return;
+        }
+        
+        // Execute trade
+        this.playerCredits -= totalCost;
+        item.quantity -= quantity;
+        
+        // Add to player inventory
+        const inventoryItem = {
+            id: item.itemId,
+            name: item.itemName,
+            category: item.category,
+            quantity: quantity,
+            mass: 2.0,
+            volume: 1.0,
+            value: item.currentPrice,
+            rarity: 'common',
+            description: `Purchased from ${this.currentMarket?.stationName}`,
+            properties: new Map(),
+            stackable: true,
+            maxStack: 100
+        };
+        
+        this.playerInventory.addItemToHold('main_cargo', inventoryItem);
+        
+        // Update market reputation
+        if (this.currentMarket) {
+            this.currentMarket.reputation += 0.1;
+        }
+        
+        console.log(`Bought ${quantity}x ${item.itemName} for ${totalCost}¢`);
+    }
+
+    private sellItem(item: TradeOrder, quantity: number): void {
+        const playerQuantity = this.getPlayerItemQuantity(item.itemId);
+        
+        if (playerQuantity < quantity) {
+            console.log('Insufficient items to sell');
+            return;
+        }
+        
+        if (item.quantity < quantity) {
+            console.log('Station cannot buy that much');
+            return;
+        }
+        
+        const totalEarnings = item.currentPrice * quantity;
+        
+        // Execute trade
+        this.playerCredits += totalEarnings;
+        item.quantity -= quantity;
+        
+        // Remove from player inventory
+        this.playerInventory.removeItemFromHold('main_cargo', item.itemId, quantity);
+        
+        // Update market reputation
+        if (this.currentMarket) {
+            this.currentMarket.reputation += 0.05;
+        }
+        
+        console.log(`Sold ${quantity}x ${item.itemName} for ${totalEarnings}¢`);
+    }
+
+    private getPlayerItemQuantity(itemId: string): number {
+        // This should integrate with the actual inventory system
+        return this.playerInventory.hasItem(itemId) ? 10 : 0; // Placeholder
+    }
+
+    // Public methods for game integration
+    public show(marketId?: string): void {
+        this.isVisible = true;
+        this.scrollOffset = 0;
+        this.selectedItem = null;
+        
+        if (marketId) {
+            this.currentMarket = this.markets.get(marketId) || null;
+        }
+    }
+
+    public hide(): void {
+        this.isVisible = false;
+        this.selectedItem = null;
+    }
+
+    public toggle(): void {
+        if (this.isVisible) {
+            this.hide();
+        } else {
+            this.show();
+        }
+    }
+
+    public dockAtStation(stationId: string): boolean {
+        const market = this.markets.get(stationId);
+        if (market) {
+            this.currentMarket = market;
+            return true;
+        }
+        return false;
+    }
+
+    public getPlayerCredits(): number {
+        return this.playerCredits;
+    }
+
+    public setPlayerCredits(credits: number): void {
+        this.playerCredits = Math.max(0, credits);
+    }
+
+    public addCredits(amount: number): void {
+        this.playerCredits += amount;
+    }
+
+    public deductCredits(amount: number): boolean {
+        if (this.playerCredits >= amount) {
+            this.playerCredits -= amount;
+            return true;
+        }
+        return false;
+    }
+
+    public getBestTradeRoutes(count: number = 10): TradeRoute[] {
+        return this.tradeRoutes.slice(0, count);
+    }
+
+    public getMarketByStation(stationId: string): Market | null {
+        return this.markets.get(stationId) || null;
+    }
+
+    public getAllMarkets(): Market[] {
+        return Array.from(this.markets.values());
+    }
+
+    public getIsVisible(): boolean {
+        return this.isVisible;
+    }
+
+    public getCurrentMarket(): Market | null {
+        return this.currentMarket;
+    }
+
+    public updateMarketEvent(systemId: string, eventType: string, modifier: number): void {
+        // Update market prices based on galactic events
+        this.markets.forEach(market => {
+            if (market.systemId === systemId) {
+                market.buyOrders.forEach(order => {
+                    order.currentPrice = Math.round(order.currentPrice * (1 + modifier));
+                });
+                market.sellOrders.forEach(order => {
+                    order.currentPrice = Math.round(order.currentPrice * (1 + modifier));
+                });
+            }
+        });
+    }
+}// Trading System - Economic simulation and market dynamics
+export interface Market {
+    stationId: string;
+    stationName: string;
+    stationType: StationType;
+    position: { x: number; y: number };
+    systemId: string;
+    buyOrders: Map<string, TradeOrder>;
+    sellOrders: Map<string, TradeOrder>;
+    reputation: number;
+    securityLevel: number;
+    faction: string;
+    specialization: ItemCategory[];
+    lastUpdate: number;
+}
+
+export interface TradeOrder {
+    itemId: string;
+    itemName: string;
+    category: ItemCategory;
+    basePrice: number;
+    currentPrice: number;
+    quantity: number;
+    maxQuantity: number;
+    priceFluctuation: number;
+    demand: number;
+    supply: number;
+    refreshRate: number;
+    restrictions: TradeRestriction[];
+}
+
+export interface TradeRoute {
+    id: string;
+    startStation: string;
+    endStation: string;
+    itemId: string;
+    buyPrice: number;
+    sellPrice: number;
+    profit: number;
+    profitMargin: number;
+    distance: number;
+    profitPerUnit: number;
+    riskLevel: number;
+    updated: number;
+}
+
+export enum StationType {
+    TRADING_STATION = 'trading_station',
+    MINING_STATION = 'mining_station',
+    INDUSTRIAL = 'industrial',
+    RESEARCH = 'research',
+    MILITARY = 'military',
+    AGRICULTURAL = 'agricultural',
+    REFINERY = 'refinery',
+    SHIPYARD = 'shipyard',
+    BLACK_MARKET = 'black_market'
+}
+
+export enum TradeRestriction {
+    NONE = 'none',
+    LICENSE_REQUIRED = 'license_required',
+    FACTION_ONLY = 'faction_only',
+    MILITARY_GRADE = 'military_grade',
+    ILLEGAL = 'illegal',
+    HAZARDOUS = 'hazardous',
+    REPUTATION_MINIMUM = 'reputation_minimum'
+}
+
+import { ItemCategory, ItemRarity, InventoryItem } from './inventory_system';
+
+export class TradingSystem {
+    private canvas: HTMLCanvasElement;
+    private ctx: CanvasRenderingContext2D;
+    private markets: Map<string, Market>;
+    private tradeRoutes: TradeRoute[];
+    private playerInventory: any;
+    private playerCredits: number;
+    private currentMarket: Market | null;
+    private selectedItem: string | null;
+    private tradeMode: 'buy' | 'sell' | 'routes';
+    private isVisible: boolean;
+    private scrollOffset: number;
+    private animationTime: number;
+
+    // Economic parameters
+    private baseInflation: number;
+    private volatility: number;

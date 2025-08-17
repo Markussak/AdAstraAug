@@ -1,0 +1,412 @@
+// Main Game Entry Point
+import { Game } from './core/Game';
+import { GameConfig } from './core/GameConfig';
+import { AssetManager } from './core/AssetManager';
+import { AudioManager } from './audio/AudioManager';
+import { SaveManager } from './core/SaveManager';
+
+// Global game instance
+let game: Game | null = null;
+
+// Color palette from specification
+export const COLORS = {
+    // Primary colors
+    PRIMARY_LIGHT: '#DCD7C9',
+    PRIMARY_BROWN: '#A27B5C', 
+    PRIMARY_GREEN: '#3F4F44',
+    PRIMARY_ORANGE: '#F97300',
+    
+    // Secondary colors
+    SECONDARY_LIGHT: '#E2DFD0',
+    SECONDARY_BROWN: '#524C42',
+    SECONDARY_ORANGE: '#F6B17A',
+    
+    // Accent colors
+    ACCENT_BLUE: '#7077A1',
+    ACCENT_DARK_BLUE: '#424769',
+    DARK_PURPLE: '#201127',
+    DARK_BLUE: '#201433',
+    DARKER_BLUE: '#1b1e34',
+    
+    // Teal variants
+    TEAL_DARK: '#355d68',
+    TEAL_MED: '#6aaf9d',
+    TEAL_LIGHT: '#94c5ac',
+    
+    // Yellows and oranges
+    YELLOW_LIGHT: '#ffeb99',
+    ORANGE_LIGHT: '#ffc27a',
+    ORANGE_MED: '#ec9a6d',
+    
+    // Reds
+    RED_MED: '#d9626b',
+    RED_DARK: '#c24b6e',
+    RED_BLOOD: '#5e1a20',
+    
+    // Additional colors
+    PURPLE_DARK: '#a73169',
+    GREEN_TEAL: '#6e8f8d',
+    GREEN_MED: '#5c6a53',
+    GREEN_DARK: '#2f4541',
+    BROWN_DARK: '#262921',
+    
+    // Blacks and grays
+    BLACK_BLUE: '#060b11',
+    BLACK_PURPLE: '#0c1023',
+    BLACK_DARKER: '#10182e',
+    GRAY_BLUE: '#182634',
+    
+    // Browns
+    BROWN_RUST: '#8d402f',
+    BROWN_LIGHT: '#be794f',
+    BEIGE: '#e3b47a',
+    WHITE: '#ffffff',
+    
+    // Greens
+    GREEN_YELLOW: '#cdd2ab',
+    GREEN_OLIVE: '#95ac71',
+    BROWN_OLIVE: '#827d49',
+    BROWN_GOLD: '#80592e',
+    GREEN_FOREST: '#43523d',
+    
+    // Warm tones
+    BEIGE_WARM: '#caa98b',
+    BROWN_WARM: '#9c837f',
+    BROWN_MED: '#76644f',
+    BROWN_VERY_DARK: '#494129',
+    GOLD: '#bb964e',
+    BROWN_RED: '#9c6b4d',
+    
+    // Purples
+    PURPLE_BROWN: '#442434',
+    PURPLE_LIGHT: '#af9daf',
+    PURPLE_MED: '#7f7aa1',
+    PURPLE_DARKER: '#725582',
+    PURPLE_DARKEST: '#534255',
+    GRAY_PURPLE: '#333340',
+    
+    // Blues and cyans
+    CYAN: '#6aa1ac',
+    GRAY_BLUE_MED: '#536170',
+    GRAY_GREEN: '#4e554e',
+    PURPLE_NAVY: '#413c65',
+    TEAL_VERY_DARK: '#263535',
+    BLACK: '#000000',
+    
+    // Semantic color assignments
+    BG_PRIMARY: '#060b11',
+    BG_SECONDARY: '#0c1023',
+    BG_TERTIARY: '#201433',
+    
+    HULL_PRIMARY: '#DCD7C9',
+    HULL_SECONDARY: '#524C42',
+    HULL_ACCENT: '#6aaf9d',
+    
+    ACCENT_FRIENDLY: '#94c5ac',
+    ACCENT_HOSTILE: '#d9626b',
+    ACCENT_NEUTRAL: '#e3b47a',
+    ACCENT_WARNING: '#F97300',
+    
+    FX_GLOW_PRIMARY: '#6aa1ac',
+    FX_GLOW_SECONDARY: '#ffc27a',
+    FX_ENERGY: '#94c5ac',
+    FX_DAMAGE: '#5e1a20'
+} as const;
+
+// Game initialization and loading sequence
+class GameInitializer {
+    private loadingProgress: number = 0;
+    private loadingSteps: string[] = [
+        'INITIALIZING QUANTUM MATRIX...',
+        'LOADING STELLAR CARTOGRAPHY...',
+        'CALIBRATING NAVIGATION ARRAYS...',
+        'SYNCHRONIZING WARP CORE...',
+        'ACTIVATING LIFE SUPPORT SYSTEMS...',
+        'ESTABLISHING COMM CHANNELS...',
+        'LOADING WEAPON SYSTEMS...',
+        'RUNNING SYSTEM DIAGNOSTICS...',
+        'QUANTUM DRIVE READY'
+    ];
+    private currentStepIndex: number = 0;
+    private loadingInterval: number | null = null;
+
+    constructor() {
+        this.initializeEventListeners();
+    }
+
+    private initializeEventListeners(): void {
+        document.addEventListener('DOMContentLoaded', () => this.startLoadingSequence());
+        
+        // Menu event listeners
+        const newGameBtn = document.getElementById('newGameBtn');
+        const loadGameBtn = document.getElementById('loadGameBtn');
+        const settingsBtn = document.getElementById('settingsBtn');
+        const creditsBtn = document.getElementById('creditsBtn');
+        const startGameBtn = document.getElementById('startGameBtn');
+        const backToMenuBtn = document.getElementById('backToMenuBtn');
+
+        newGameBtn?.addEventListener('click', () => this.showGameSetup());
+        loadGameBtn?.addEventListener('click', () => this.loadGame());
+        settingsBtn?.addEventListener('click', () => this.showSettings());
+        creditsBtn?.addEventListener('click', () => this.showCredits());
+        startGameBtn?.addEventListener('click', () => this.startNewGame());
+        backToMenuBtn?.addEventListener('click', () => this.showMainMenu());
+    }
+
+    private async startLoadingSequence(): Promise<void> {
+        console.log('🚀 Starting Space Explorer 16-Bit loading sequence...');
+        
+        // Initialize core systems
+        await this.initializeCoreSystems();
+        
+        // Start visual loading animation
+        this.startLoadingAnimation();
+        
+        // Load game assets
+        await this.loadAssets();
+        
+        // Complete loading and show main menu
+        this.completeLoading();
+    }
+
+    private async initializeCoreSystems(): Promise<void> {
+        try {
+            // Initialize audio system
+            AudioManager.getInstance().initialize();
+            
+            // Initialize save system
+            SaveManager.getInstance().initialize();
+            
+            // Initialize asset manager
+            AssetManager.getInstance().initialize();
+            
+            console.log('✅ Core systems initialized successfully');
+        } catch (error) {
+            console.error('❌ Failed to initialize core systems:', error);
+            this.showErrorMessage('SYSTEM INITIALIZATION FAILED');
+        }
+    }
+
+    private startLoadingAnimation(): void {
+        const loadingFill = document.getElementById('loadingFill') as HTMLElement;
+        const loadingText = document.getElementById('loadingText') as HTMLElement;
+        
+        this.loadingInterval = window.setInterval(() => {
+            // Simulate loading progress
+            const increment = Math.random() * 15 + 5;
+            this.loadingProgress = Math.min(100, this.loadingProgress + increment);
+            
+            // Update progress bar
+            if (loadingFill) {
+                loadingFill.style.width = `${this.loadingProgress}%`;
+            }
+            
+            // Update loading text occasionally
+            if (Math.random() < 0.3 && this.currentStepIndex < this.loadingSteps.length - 1) {
+                this.currentStepIndex++;
+                if (loadingText) {
+                    loadingText.textContent = this.loadingSteps[this.currentStepIndex];
+                }
+            }
+            
+            // Complete loading when progress reaches 100%
+            if (this.loadingProgress >= 100) {
+                this.completeLoadingAnimation();
+            }
+        }, 150);
+    }
+
+    private completeLoadingAnimation(): void {
+        if (this.loadingInterval) {
+            clearInterval(this.loadingInterval);
+            this.loadingInterval = null;
+        }
+        
+        const loadingText = document.getElementById('loadingText') as HTMLElement;
+        if (loadingText) {
+            loadingText.textContent = this.loadingSteps[this.loadingSteps.length - 1];
+        }
+        
+        // Transition to main menu after a short delay
+        setTimeout(() => {
+            this.showMainMenu();
+        }, 1000);
+    }
+
+    private async loadAssets(): Promise<void> {
+        // Load game assets (sprites, sounds, etc.)
+        // This would typically load from actual asset files
+        return new Promise(resolve => {
+            setTimeout(resolve, 2000); // Simulate asset loading time
+        });
+    }
+
+    private completeLoading(): void {
+        console.log('🎮 Loading complete - transitioning to main menu');
+    }
+
+    private showMainMenu(): void {
+        const loadingScreen = document.getElementById('loadingScreen');
+        const mainMenu = document.getElementById('mainMenu');
+        
+        if (loadingScreen) {
+            loadingScreen.classList.add('hidden');
+        }
+        
+        if (mainMenu) {
+            mainMenu.classList.remove('hidden');
+        }
+        
+        // Play menu music
+        AudioManager.getInstance().playMusic('menu');
+    }
+
+    private showGameSetup(): void {
+        const mainMenu = document.getElementById('mainMenu');
+        const gameSetup = document.getElementById('gameSetup');
+        
+        if (mainMenu) {
+            mainMenu.classList.add('hidden');
+        }
+        
+        if (gameSetup) {
+            gameSetup.classList.remove('hidden');
+        }
+    }
+
+    private async startNewGame(): Promise<void> {
+        // Get setup parameters
+        const galaxySize = (document.getElementById('galaxySize') as HTMLSelectElement)?.value || 'medium';
+        const economicComplexity = (document.getElementById('economicComplexity') as HTMLSelectElement)?.value || 'balanced';
+        const combatDifficulty = (document.getElementById('combatDifficulty') as HTMLSelectElement)?.value || 'normal';
+        const resourceScarcity = (document.getElementById('resourceScarcity') as HTMLSelectElement)?.value || 'normal';
+
+        const config = new GameConfig({
+            galaxySize,
+            economicComplexity,
+            combatDifficulty,
+            resourceScarcity
+        });
+
+        // Hide setup screen
+        const gameSetup = document.getElementById('gameSetup');
+        if (gameSetup) {
+            gameSetup.classList.add('hidden');
+        }
+
+        // Initialize and start the game
+        try {
+            game = new Game(config);
+            await game.initialize();
+            game.start();
+            
+            console.log('🚀 Game started successfully!');
+            console.log('Configuration:', config);
+        } catch (error) {
+            console.error('❌ Failed to start game:', error);
+            this.showErrorMessage('GAME INITIALIZATION FAILED');
+        }
+    }
+
+    private loadGame(): void {
+        const saveData = SaveManager.getInstance().loadGame();
+        if (saveData) {
+            console.log('Loading saved game...');
+            // TODO: Implement game loading
+        } else {
+            console.log('No saved game found');
+            // Show message to user
+        }
+    }
+
+    private showSettings(): void {
+        console.log('Settings menu not implemented yet');
+        // TODO: Implement settings screen
+    }
+
+    private showCredits(): void {
+        console.log('Credits screen not implemented yet');
+        // TODO: Implement credits screen
+    }
+
+    private showErrorMessage(message: string): void {
+        const loadingText = document.getElementById('loadingText');
+        if (loadingText) {
+            loadingText.textContent = message;
+            loadingText.style.color = COLORS.ACCENT_HOSTILE;
+        }
+    }
+}
+
+// Performance monitoring
+class PerformanceMonitor {
+    private frameCount: number = 0;
+    private lastFpsUpdate: number = 0;
+    private currentFps: number = 60;
+    
+    constructor() {
+        this.startMonitoring();
+    }
+    
+    private startMonitoring(): void {
+        const updateFps = (timestamp: number) => {
+            this.frameCount++;
+            
+            if (timestamp - this.lastFpsUpdate >= 1000) {
+                this.currentFps = Math.round((this.frameCount * 1000) / (timestamp - this.lastFpsUpdate));
+                this.frameCount = 0;
+                this.lastFpsUpdate = timestamp;
+                
+                // Log performance warnings
+                if (this.currentFps < 30) {
+                    console.warn(`⚠️ Low FPS detected: ${this.currentFps}`);
+                }
+            }
+            
+            requestAnimationFrame(updateFps);
+        };
+        
+        requestAnimationFrame(updateFps);
+    }
+    
+    public getFps(): number {
+        return this.currentFps;
+    }
+}
+
+// Error handling and debugging
+window.addEventListener('error', (event) => {
+    console.error('💥 Global error:', event.error);
+    console.error('Stack trace:', event.error?.stack);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('💥 Unhandled promise rejection:', event.reason);
+});
+
+// Debug utilities (available in development)
+if (process.env.NODE_ENV === 'development') {
+    (window as any).gameDebug = {
+        getGame: () => game,
+        getColors: () => COLORS,
+        restartGame: () => {
+            if (game) {
+                game.destroy();
+            }
+            location.reload();
+        },
+        logPerformance: () => {
+            console.log('Performance metrics:', {
+                fps: performanceMonitor.getFps(),
+                memory: (performance as any).memory
+            });
+        }
+    };
+}
+
+// Initialize the game
+const gameInitializer = new GameInitializer();
+const performanceMonitor = new PerformanceMonitor();
+
+// Export for use in other modules
+export { game, COLORS };

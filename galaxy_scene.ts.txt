@@ -1,0 +1,977 @@
+// galaxy_scene.ts - Galaxy/Interstellar Space Scene
+import { Scene } from ‘./scene_manager’;
+import { Renderer } from ‘./renderer’;
+import { Camera } from ‘./camera’;
+import { InputManager } from ‘./input_manager’;
+import { Vector2 } from ‘./basic_classes’;
+import { GameConfig } from ‘./game_config’;
+
+export interface StarSystemInfo {
+id: string;
+name: string;
+position: Vector2;
+type: StarType;
+color: string;
+size: number;
+explored: boolean;
+population: number;
+threatLevel: number;
+resources: ResourceType[];
+jumpGateConnections: string[];
+}
+
+export enum StarType {
+G_CLASS = ‘G-Class’,  // Yellow dwarf (Sun-like)
+K_CLASS = ‘K-Class’,  // Orange dwarf
+M_CLASS = ‘M-Class’,  // Red dwarf
+F_CLASS = ‘F-Class’,  // Yellow-white
+A_CLASS = ‘A-Class’,  // White
+B_CLASS = ‘B-Class’,  // Blue-white
+O_CLASS = ‘O-Class’,  // Blue giant
+BINARY = ‘Binary’,    // Binary system
+NEUTRON = ‘Neutron’,  // Neutron star
+BLACKHOLE = ‘BlackHole’ // Black hole
+}
+
+export enum ResourceType {
+HYDROGEN = ‘hydrogen’,
+HELIUM = ‘helium’,
+CARBON = ‘carbon’,
+IRON = ‘iron’,
+URANIUM = ‘uranium’,
+RARE_EARTH = ‘rare_earth’,
+EXOTIC_MATTER = ‘exotic_matter’,
+ANTIMATTER = ‘antimatter’
+}
+
+export class GalaxyScene extends Scene {
+private starSystems: Map<string, StarSystemInfo> = new Map();
+private selectedSystem: StarSystemInfo | null = null;
+
+```
+// Galaxy structure
+private galaxyCenter: Vector2 = new Vector2(0, 0);
+private galaxyRadius: number = 2000;
+private spiralArms: SpiralArm[] = [];
+
+// Navigation and exploration
+private explorationRadius: number = 100;
+private playerPosition: Vector2 = new Vector2(0, 0);
+private navigationPath: Vector2[] = [];
+
+// Background elements
+private galaxyCore: GalaxyCore;
+private darkMatter: DarkMatterCloud[] = [];
+private distantGalaxies: DistantGalaxy[] = [];
+
+// Jump gate network
+private jumpGates: Map<string, JumpGate> = new Map();
+private tradeRoutes: TradeRoute[] = [];
+
+// Animation and visual effects
+private rotationSpeed: number = 0.0001;
+private currentRotation: number = 0;
+private pulsingEffect: number = 0;
+
+constructor(name: string = 'Galaxy') {
+    super(name);
+}
+
+protected async onInitialize(): Promise<void> {
+    console.log('Initializing Galaxy Scene...');
+    
+    // Generate galaxy structure
+    this.generateGalaxyCore();
+    this.generateSpiralArms();
+    this.generateStarSystems();
+    this.generateJumpGateNetwork();
+    
+    // Create background elements
+    this.generateDarkMatterClouds();
+    this.generateDistantGalaxies();
+    
+    // Set starting position (home system)
+    this.playerPosition = new Vector2(50, 25);
+    this.markSystemExplored('sol-system');
+    
+    console.log(`Galaxy Scene initialized with ${this.starSystems.size} star systems`);
+}
+
+private generateGalaxyCore(): void {
+    this.galaxyCore = {
+        position: this.galaxyCenter.clone(),
+        radius: 80,
+        brightness: 1.0,
+        pulseSpeed: 2.0,
+        particleCount: 50,
+        particles: []
+    };
+
+    // Generate core particles
+    for (let i = 0; i < this.galaxyCore.particleCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = Math.random() * this.galaxyCore.radius;
+        
+        this.galaxyCore.particles.push({
+            position: new Vector2(
+                Math.cos(angle) * distance,
+                Math.sin(angle) * distance
+            ),
+            velocity: new Vector2(
+                (Math.random() - 0.5) * 10,
+                (Math.random() - 0.5) * 10
+            ),
+            brightness: Math.random(),
+            size: 1 + Math.random() * 2
+        });
+    }
+}
+
+private generateSpiralArms(): void {
+    const armCount = 4;
+    const armLength = this.galaxyRadius * 0.8;
+    
+    for (let i = 0; i < armCount; i++) {
+        const startAngle = (i / armCount) * Math.PI * 2;
+        
+        this.spiralArms.push({
+            startAngle: startAngle,
+            length: armLength,
+            width: 60,
+            tightness: 2.5,
+            starDensity: 0.8,
+            points: this.generateSpiralArmPoints(startAngle, armLength, 2.5)
+        });
+    }
+}
+
+private generateSpiralArmPoints(startAngle: number, length: number, tightness: number): Vector2[] {
+    const points: Vector2[] = [];
+    const steps = 100;
+    
+    for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const distance = t * length;
+        const angle = startAngle + t * Math.PI * tightness;
+        
+        points.push(new Vector2(
+            Math.cos(angle) * distance,
+            Math.sin(angle) * distance
+        ));
+    }
+    
+    return points;
+}
+
+private generateStarSystems(): void {
+    const systemCount = 200 + Math.floor(Math.random() * 100);
+    let systemId = 0;
+
+    // Generate home system first
+    this.createStarSystem({
+        id: 'sol-system',
+        name: 'Sol',
+        position: new Vector2(50, 25),
+        type: StarType.G_CLASS,
+        size: 'medium',
+        explored: true,
+        isHomeSystem: true
+    });
+
+    // Generate systems along spiral arms
+    this.spiralArms.forEach(arm => {
+        const systemsPerArm = Math.floor(systemCount / this.spiralArms.length);
+        
+        for (let i = 0; i < systemsPerArm; i++) {
+            const t = (i / systemsPerArm) + Math.random() * 0.1 - 0.05;
+            const armPosition = this.getPositionOnSpiralArm(arm, t);
+            
+            // Add some random offset
+            const offset = new Vector2(
+                (Math.random() - 0.5) * arm.width,
+                (Math.random() - 0.5) * arm.width
+            );
+            
+            const position = armPosition.add(offset);
+            
+            this.createStarSystem({
+                id: `system-${systemId++}`,
+                name: this.generateSystemName(),
+                position: position,
+                type: this.randomStarType(),
+                size: this.randomSystemSize(),
+                explored: false
+            });
+        }
+    });
+
+    // Generate systems in galaxy center
+    const coreSystemCount = 20;
+    for (let i = 0; i < coreSystemCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = Math.random() * this.galaxyCore.radius * 1.5;
+        
+        const position = new Vector2(
+            Math.cos(angle) * distance,
+            Math.sin(angle) * distance
+        );
+        
+        this.createStarSystem({
+            id: `core-${i}`,
+            name: this.generateSystemName(),
+            position: position,
+            type: Math.random() > 0.7 ? StarType.BLACKHOLE : StarType.NEUTRON,
+            size: 'large',
+            explored: false,
+            dangerous: true
+        });
+    }
+
+    // Generate isolated systems
+    const isolatedCount = 30;
+    for (let i = 0; i < isolatedCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = this.galaxyRadius * 0.3 + Math.random() * this.galaxyRadius * 0.6;
+        
+        const position = new Vector2(
+            Math.cos(angle) * distance,
+            Math.sin(angle) * distance
+        );
+        
+        this.createStarSystem({
+            id: `isolated-${i}`,
+            name: this.generateSystemName(),
+            position: position,
+            type: this.randomStarType(),
+            size: this.randomSystemSize(),
+            explored: false
+        });
+    }
+}
+
+private createStarSystem(config: {
+    id: string,
+    name: string,
+    position: Vector2,
+    type: StarType,
+    size: string,
+    explored: boolean,
+    isHomeSystem?: boolean,
+    dangerous?: boolean
+}): void {
+    const sizeMap = { small: 3, medium: 5, large: 8 };
+    const size = sizeMap[config.size as keyof typeof sizeMap] || 5;
+    
+    const system: StarSystemInfo = {
+        id: config.id,
+        name: config.name,
+        position: config.position,
+        type: config.type,
+        color: this.getStarColor(config.type),
+        size: size,
+        explored: config.explored,
+        population: config.isHomeSystem ? 1000000 : Math.floor(Math.random() * 100000),
+        threatLevel: config.dangerous ? 8 + Math.floor(Math.random() * 2) : Math.floor(Math.random() * 5),
+        resources: this.generateSystemResources(config.type),
+        jumpGateConnections: []
+    };
+
+    this.starSystems.set(config.id, system);
+}
+
+private getStarColor(type: StarType): string {
+    const colorMap = {
+        [StarType.G_CLASS]: '#ffff88',
+        [StarType.K_CLASS]: '#ff8844',
+        [StarType.M_CLASS]: '#ff4444',
+        [StarType.F_CLASS]: '#ffffaa',
+        [StarType.A_CLASS]: '#ffffff',
+        [StarType.B_CLASS]: '#aabbff',
+        [StarType.O_CLASS]: '#8888ff',
+        [StarType.BINARY]: '#ffaa88',
+        [StarType.NEUTRON]: '#88ffff',
+        [StarType.BLACKHOLE]: '#440044'
+    };
+    return colorMap[type] || '#ffffff';
+}
+
+private randomStarType(): StarType {
+    const types = [
+        StarType.G_CLASS, StarType.K_CLASS, StarType.M_CLASS,
+        StarType.F_CLASS, StarType.A_CLASS, StarType.BINARY
+    ];
+    const weights = [0.2, 0.3, 0.25, 0.1, 0.1, 0.05];
+    
+    const random = Math.random();
+    let accumulator = 0;
+    
+    for (let i = 0; i < types.length; i++) {
+        accumulator += weights[i];
+        if (random <= accumulator) {
+            return types[i];
+        }
+    }
+    
+    return StarType.M_CLASS;
+}
+
+private randomSystemSize(): string {
+    const random = Math.random();
+    if (random < 0.6) return 'small';
+    if (random < 0.9) return 'medium';
+    return 'large';
+}
+
+private generateSystemName(): string {
+    const prefixes = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'];
+    const suffixes = ['Centauri', 'Draconis', 'Leonis', 'Aquarii', 'Orionis', 'Cygni', 'Lyrae', 'Virginis'];
+    const numbers = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+    
+    const useGreek = Math.random() > 0.3;
+    
+    if (useGreek) {
+        const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+        const suffix = suffixes[Math.floor(Math.random() * suffixes.length)];
+        return `${prefix} ${suffix}`;
+    } else {
+        const name = suffixes[Math.floor(Math.random() * suffixes.length)];
+        const number = numbers[Math.floor(Math.random() * numbers.length)];
+        return `${name} ${number}`;
+    }
+}
+
+private generateSystemResources(type: StarType): ResourceType[] {
+    const resources: ResourceType[] = [];
+    
+    // Base resources for all systems
+    if (Math.random() > 0.3) resources.push(ResourceType.HYDROGEN);
+    if (Math.random() > 0.5) resources.push(ResourceType.HELIUM);
+    
+    // Type-specific resources
+    switch (type) {
+        case StarType.G_CLASS:
+        case StarType.F_CLASS:
+            if (Math.random() > 0.4) resources.push(ResourceType.CARBON);
+            if (Math.random() > 0.6) resources.push(ResourceType.IRON);
+            break;
+        case StarType.NEUTRON:
+            resources.push(ResourceType.EXOTIC_MATTER);
+            if (Math.random() > 0.7) resources.push(ResourceType.ANTIMATTER);
+            break;
+        case StarType.B_CLASS:
+        case StarType.O_CLASS:
+            if (Math.random() > 0.5) resources.push(ResourceType.URANIUM);
+            if (Math.random() > 0.8) resources.push(ResourceType.RARE_EARTH);
+            break;
+    }
+    
+    return resources;
+}
+
+private getPositionOnSpiralArm(arm: SpiralArm, t: number): Vector2 {
+    const index = Math.floor(t * (arm.points.length - 1));
+    const nextIndex = Math.min(index + 1, arm.points.length - 1);
+    const localT = (t * (arm.points.length - 1)) - index;
+    
+    const point1 = arm.points[index];
+    const point2 = arm.points[nextIndex];
+    
+    return new Vector2(
+        point1.x + (point2.x - point1.x) * localT,
+        point1.y + (point2.y - point1.y) * localT
+    );
+}
+
+private generateJumpGateNetwork(): void {
+    // Create jump gates connecting nearby systems
+    const systems = Array.from(this.starSystems.values());
+    
+    systems.forEach(system => {
+        // Find nearby systems for potential connections
+        const nearbySystemsAll = systems.filter(other => {
+            if (other.id === system.id) return false;
+            const distance = system.position.distanceTo(other.position);
+            return distance < 200; // Maximum jump gate range
+        });
+        
+        // Sort by distance and connect to closest systems
+        const nearbySystems = nearbySystemsAll
+            .sort((a, b) => {
+                const distA = system.position.distanceTo(a.position);
+                const distB = system.position.distanceTo(b.position);
+                return distA - distB;
+            })
+            .slice(0, 3 + Math.floor(Math.random() * 2)); // 3-4 connections per system
+        
+        nearbySystems.forEach(nearbySystem => {
+            // Create bidirectional connection
+            if (!system.jumpGateConnections.includes(nearbySystem.id)) {
+                system.jumpGateConnections.push(nearbySystem.id);
+            }
+            if (!nearbySystem.jumpGateConnections.includes(system.id)) {
+                nearbySystem.jumpGateConnections.push(system.id);
+            }
+        });
+    });
+
+    // Create jump gate objects
+    this.starSystems.forEach(system => {
+        system.jumpGateConnections.forEach(targetId => {
+            const gateId = `${system.id}-${targetId}`;
+            if (!this.jumpGates.has(gateId)) {
+                const target = this.starSystems.get(targetId);
+                if (target) {
+                    this.jumpGates.set(gateId, {
+                        id: gateId,
+                        from: system.id,
+                        to: targetId,
+                        position: system.position.clone(),
+                        targetPosition: target.position.clone(),
+                        active: system.explored && target.explored,
+                        distance: system.position.distanceTo(target.position)
+                    });
+                }
+            }
+        });
+    });
+}
+
+private generateDarkMatterClouds(): void {
+    const cloudCount = 15;
+    
+    for (let i = 0; i < cloudCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = Math.random() * this.galaxyRadius * 0.8;
+        
+        this.darkMatter.push({
+            position: new Vector2(
+                Math.cos(angle) * distance,
+                Math.sin(angle) * distance
+            ),
+            size: 100 + Math.random() * 200,
+            density: 0.1 + Math.random() * 0.2,
+            drift: new Vector2(
+                (Math.random() - 0.5) * 5,
+                (Math.random() - 0.5) * 5
+            ),
+            pulsePhase: Math.random() * Math.PI * 2
+        });
+    }
+}
+
+private generateDistantGalaxies(): void {
+    const galaxyCount = 8;
+    
+    for (let i = 0; i < galaxyCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = this.galaxyRadius * 1.5 + Math.random() * this.galaxyRadius;
+        
+        this.distantGalaxies.push({
+            position: new Vector2(
+                Math.cos(angle) * distance,
+                Math.sin(angle) * distance
+            ),
+            size: 20 + Math.random() * 40,
+            brightness: 0.2 + Math.random() * 0.3,
+            color: ['#ffaaaa', '#aaffaa', '#aaaaff', '#ffffaa'][i % 4],
+            type: ['spiral', 'elliptical', 'irregular'][Math.floor(Math.random() * 3)]
+        });
+    }
+}
+
+update(deltaTime: number): void {
+    if (!this.isSceneActive()) return;
+
+    // Update galaxy rotation
+    this.currentRotation += this.rotationSpeed * deltaTime;
+    
+    // Update pulsing effect
+    this.pulsingEffect += deltaTime * 2;
+    
+    // Update galaxy core particles
+    this.updateGalaxyCoreParticles(deltaTime);
+    
+    // Update dark matter clouds
+    this.updateDarkMatterClouds(deltaTime);
+    
+    // Update jump gate states
+    this.updateJumpGates();
+}
+
+private updateGalaxyCoreParticles(deltaTime: number): void {
+    this.galaxyCore.particles.forEach(particle => {
+        // Orbital motion around galactic center
+        const distance = particle.position.magnitude();
+        const orbitalSpeed = 50 / (distance + 10); // Slower for distant particles
+        const angle = Math.atan2(particle.position.y, particle.position.x) + orbitalSpeed * deltaTime;
+        
+        particle.position.x = Math.cos(angle) * distance;
+        particle.position.y = Math.sin(angle) * distance;
+        
+        // Add some random motion
+        particle.position = particle.position.add(particle.velocity.multiply(deltaTime * 0.1));
+    });
+}
+
+private updateDarkMatterClouds(deltaTime: number): void {
+    this.darkMatter.forEach(cloud => {
+        cloud.position = cloud.position.add(cloud.drift.multiply(deltaTime));
+        cloud.pulsePhase += deltaTime;
+    });
+}
+
+private updateJumpGates(): void {
+    this.jumpGates.forEach(gate => {
+        const fromSystem = this.starSystems.get(gate.from);
+        const toSystem = this.starSystems.get(gate.to);
+        
+        if (fromSystem && toSystem) {
+            gate.active = fromSystem.explored && toSystem.explored;
+        }
+    });
+}
+
+render(renderer: Renderer, camera: Camera): void {
+    // Render background elements
+    this.renderDistantGalaxies(renderer, camera);
+    this.renderDarkMatterClouds(renderer, camera);
+    
+    // Render galaxy structure
+    this.renderGalaxyCore(renderer, camera);
+    this.renderSpiralArms(renderer, camera);
+    
+    // Render jump gate network
+    this.renderJumpGates(renderer, camera);
+    
+    // Render star systems
+    this.renderStarSystems(renderer, camera);
+    
+    // Render exploration area
+    this.renderExplorationRadius(renderer, camera);
+    
+    // Render UI elements
+    this.renderGalaxyInfo(renderer);
+}
+
+private renderDistantGalaxies(renderer: Renderer, camera: Camera): void {
+    this.distantGalaxies.forEach(galaxy => {
+        const screenPos = camera.worldToScreen(galaxy.position, renderer.getWidth(), renderer.getHeight());
+        const size = Math.max(1, galaxy.size * camera.zoom * 0.1);
+        
+        if (size > 1) {
+            const ctx = renderer.getContext();
+            ctx.save();
+            ctx.globalAlpha = galaxy.brightness;
+            
+            if (galaxy.type === 'spiral') {
+                // Simple spiral galaxy representation
+                ctx.strokeStyle = galaxy.color;
+                ctx.lineWidth = 1;
+                for (let i = 0; i < 3; i++) {
+                    const armAngle = (i / 3) * Math.PI * 2;
+                    ctx.beginPath();
+                    ctx.arc(screenPos.x, screenPos.y, size * (0.5 + i * 0.25), armAngle, armAngle + Math.PI);
+                    ctx.stroke();
+                }
+            } else {
+                // Elliptical or irregular
+                renderer.drawCircle(screenPos.x, screenPos.y, size, galaxy.color, true);
+            }
+            
+            ctx.restore();
+        }
+    });
+}
+
+private renderDarkMatterClouds(renderer: Renderer, camera: Camera): void {
+    this.darkMatter.forEach(cloud => {
+        const screenPos = camera.worldToScreen(cloud.position, renderer.getWidth(), renderer.getHeight());
+        const size = cloud.size * camera.zoom;
+        
+        if (size > 10) {
+            const pulse = Math.sin(cloud.pulsePhase) * 0.2 + 0.8;
+            const alpha = cloud.density * pulse;
+            
+            renderer.drawRadialGradient(
+                screenPos.x, screenPos.y,
+                0, size,
+                `rgba(64, 0, 128, ${alpha})`,
+                'rgba(64, 0, 128, 0)'
+            );
+        }
+    });
+}
+
+private renderGalaxyCore(renderer: Renderer, camera: Camera): void {
+    const corePos = camera.worldToScreen(this.galaxyCore.position, renderer.getWidth(), renderer.getHeight());
+    const coreSize = this.galaxyCore.radius * camera.zoom;
+    
+    if (coreSize > 5) {
+        // Main core glow
+        const pulse = Math.sin(this.pulsingEffect * this.galaxyCore.pulseSpeed) * 0.2 + 0.8;
+        
+        renderer.drawRadialGradient(
+            corePos.x, corePos.y,
+            0, coreSize * pulse,
+            `rgba(255, 200, 100, 0.8)`,
+            'rgba(255, 200, 100, 0)'
+        );
+        
+        // Core particles
+        const ctx = renderer.getContext();
+        ctx.save();
+        ctx.translate(corePos.x, corePos.y);
+        ctx.rotate(this.currentRotation);
+        
+        this.galaxyCore.particles.forEach(particle => {
+            const particleSize = particle.size * camera.zoom;
+            if (particleSize > 0.5) {
+                ctx.fillStyle = '#ffff88';
+                ctx.globalAlpha = particle.brightness;
+                ctx.fillRect(
+                    particle.position.x * camera.zoom - particleSize/2,
+                    particle.position.y * camera.zoom - particleSize/2,
+                    particleSize,
+                    particleSize
+                );
+            }
+        });
+        
+        ctx.restore();
+    }
+}
+
+private renderSpiralArms(renderer: Renderer, camera: Camera): void {
+    const ctx = renderer.getContext();
+    ctx.save();
+    
+    this.spiralArms.forEach((arm, index) => {
+        ctx.strokeStyle = GameConfig.COLORS.ACCENT_FRIENDLY;
+        ctx.globalAlpha = 0.3;
+        ctx.lineWidth = Math.max(1, arm.width * camera.zoom * 0.1);
+        
+        const rotatedPoints = arm.points.map(point => {
+            const rotated = this.rotatePoint(point, this.currentRotation);
+            return camera.worldToScreen(rotated, renderer.getWidth(), renderer.getHeight());
+        });
+        
+        // Draw spiral arm as connected line segments
+        ctx.beginPath();
+        rotatedPoints.forEach((point, i) => {
+            if (i === 0) {
+                ctx.moveTo(point.x, point.y);
+            } else {
+                ctx.lineTo(point.x, point.y);
+            }
+        });
+        ctx.stroke();
+    });
+    
+    ctx.restore();
+}
+
+private rotatePoint(point: Vector2, angle: number): Vector2 {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return new Vector2(
+        point.x * cos - point.y * sin,
+        point.x * sin + point.y * cos
+    );
+}
+
+private renderJumpGates(renderer: Renderer, camera: Camera): void {
+    const ctx = renderer.getContext();
+    
+    this.jumpGates.forEach(gate => {
+        if (!gate.active) return;
+        
+        const fromPos = camera.worldToScreen(gate.position, renderer.getWidth(), renderer.getHeight());
+        const toPos = camera.worldToScreen(gate.targetPosition, renderer.getWidth(), renderer.getHeight());
+        
+        // Only render if both ends are reasonably on screen
+        const margin = 100;
+        if (fromPos.x < -margin && toPos.x < -margin) return;
+        if (fromPos.x > renderer.getWidth() + margin && toPos.x > renderer.getWidth() + margin) return;
+        if (fromPos.y < -margin && toPos.y < -margin) return;
+        if (fromPos.y > renderer.getHeight() + margin && toPos.y > renderer.getHeight() + margin) return;
+        
+        ctx.save();
+        ctx.strokeStyle = GameConfig.COLORS.ACCENT_FRIENDLY;
+        ctx.globalAlpha = 0.4;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        
+        ctx.beginPath();
+        ctx.moveTo(fromPos.x, fromPos.y);
+        ctx.lineTo(toPos.x, toPos.y);
+        ctx.stroke();
+        
+        ctx.restore();
+    });
+}
+
+private renderStarSystems(renderer: Renderer, camera: Camera): void {
+    // Sort systems by distance for proper rendering order
+    const sortedSystems = Array.from(this.starSystems.values()).sort((a, b) => {
+        const distA = a.position.distanceTo(new Vector2(camera.centerX, camera.centerY));
+        const distB = b.position.distanceTo(new Vector2(camera.centerX, camera.centerY));
+        return distB - distA;
+    });
+
+    sortedSystems.forEach(system => {
+        const screenPos = camera.worldToScreen(system.position, renderer.getWidth(), renderer.getHeight());
+        const systemSize = Math.max(2, system.size * camera.zoom);
+        
+        // Skip if too small or off-screen
+        if (systemSize < 1) return;
+        
+        const margin = 50;
+        if (screenPos.x < -margin || screenPos.x > renderer.getWidth() + margin ||
+            screenPos.y < -margin || screenPos.y > renderer.getHeight() + margin) {
+            return;
+        }
+        
+        // System glow effect
+        if (systemSize > 3) {
+            renderer.drawRadialGradient(
+                screenPos.x, screenPos.y,
+                0, systemSize + 8,
+                system.color + '44',
+                system.color + '00'
+            );
+        }
+        
+        // Main system body
+        renderer.drawCircle(screenPos.x, screenPos.y, systemSize, system.color, true);
+        
+        // Exploration indicator
+        if (system.explored) {
+            const ctx = renderer.getContext();
+            ctx.save();
+            ctx.strokeStyle = GameConfig.COLORS.FX_GLOW_PRIMARY;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(screenPos.x, screenPos.y, systemSize + 4, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+        
+        // Selection indicator
+        if (this.selectedSystem === system) {
+            const ctx = renderer.getContext();
+            ctx.save();
+            ctx.strokeStyle = GameConfig.COLORS.FX_GLOW_SECONDARY;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.arc(screenPos.x, screenPos.y, systemSize + 8, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+        
+        // System label (when zoomed in enough)
+        if (systemSize > 8 || camera.zoom > 0.5) {
+            this.renderSystemLabel(renderer, system, screenPos, systemSize);
+        }
+    });
+}
+
+private renderSystemLabel(renderer: Renderer, system: StarSystemInfo, screenPos: Vector2, size: number): void {
+    const labelY = screenPos.y + size + 15;
+    
+    // System name
+    renderer.drawText(
+        system.name,
+        screenPos.x - (system.name.length * 3),
+        labelY,
+        GameConfig.COLORS.HULL_PRIMARY,
+        6
+    );
+    
+    // System type
+    renderer.drawText(
+        system.type,
+        screenPos.x - (system.type.length * 2),
+        labelY + 8,
+        GameConfig.COLORS.ACCENT_FRIENDLY,
+        4
+    );
+    
+    // Threat level indicator
+    if (system.threatLevel > 5) {
+        renderer.drawText(
+            '⚠',
+            screenPos.x + size + 5,
+            screenPos.y - 3,
+            GameConfig.COLORS.ACCENT_HOSTILE,
+            8
+        );
+    }
+}
+
+private renderExplorationRadius(renderer: Renderer, camera: Camera): void {
+    const playerScreenPos = camera.worldToScreen(this.playerPosition, renderer.getWidth(), renderer.getHeight());
+    const radiusScreenSize = this.explorationRadius * camera.zoom;
+    
+    if (radiusScreenSize > 10) {
+        const ctx = renderer.getContext();
+        ctx.save();
+        ctx.strokeStyle = GameConfig.COLORS.ACCENT_FRIENDLY;
+        ctx.globalAlpha = 0.3;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 5]);
+        
+        ctx.beginPath();
+        ctx.arc(playerScreenPos.x, playerScreenPos.y, radiusScreenSize, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.restore();
+    }
+}
+
+private renderGalaxyInfo(renderer: Renderer): void {
+    // Galaxy information panel
+    const infoX = 10;
+    const infoY = 10;
+    
+    renderer.drawText('GALAXY MAP', infoX, infoY, GameConfig.COLORS.HULL_PRIMARY, 8);
+    
+    const exploredCount = Array.from(this.starSystems.values()).filter(s => s.explored).length;
+    const totalCount = this.starSystems.size;
+    
+    renderer.drawText(
+        `Explored: ${exploredCount}/${totalCount}`,
+        infoX, infoY + 15,
+        GameConfig.COLORS.ACCENT_FRIENDLY, 6
+    );
+    
+    if (this.selectedSystem) {
+        renderer.drawText(
+            `Selected: ${this.selectedSystem.name}`,
+            infoX, infoY + 30,
+            GameConfig.COLORS.FX_GLOW_PRIMARY, 6
+        );
+        
+        renderer.drawText(
+            `Type: ${this.selectedSystem.type}`,
+            infoX, infoY + 45,
+            GameConfig.COLORS.ACCENT_FRIENDLY, 6
+        );
+        
+        renderer.drawText(
+            `Threat: ${this.selectedSystem.threatLevel}/10`,
+            infoX, infoY + 60,
+            this.selectedSystem.threatLevel > 5 ? GameConfig.COLORS.ACCENT_HOSTILE : GameConfig.COLORS.ACCENT_FRIENDLY,
+            6
+        );
+    }
+}
+
+handleInput(input: InputManager): void {
+    // Galaxy map specific input handling
+    // System selection with mouse clicks could be implemented here
+}
+
+// Public methods
+getStarSystems(): StarSystemInfo[] {
+    return Array.from(this.starSystems.values());
+}
+
+getSystemById(id: string): StarSystemInfo | null {
+    return this.starSystems.get(id) || null;
+}
+
+markSystemExplored(systemId: string): void {
+    const system = this.starSystems.get(systemId);
+    if (system) {
+        system.explored = true;
+    }
+}
+
+selectSystem(systemId: string): void {
+    this.selectedSystem = this.starSystems.get(systemId) || null;
+}
+
+getNearestSystems(position: Vector2, count: number = 5): StarSystemInfo[] {
+    return Array.from(this.starSystems.values())
+        .sort((a, b) => {
+            const distA = a.position.distanceTo(position);
+            const distB = b.position.distanceTo(position);
+            return distA - distB;
+        })
+        .slice(0, count);
+}
+
+canJumpToSystem(fromId: string, toId: string): boolean {
+    const fromSystem = this.starSystems.get(fromId);
+    return fromSystem ? fromSystem.jumpGateConnections.includes(toId) : false;
+}
+
+setPlayerPosition(position: Vector2): void {
+    this.playerPosition = position.clone();
+}
+```
+
+}
+
+// Interface definitions for galaxy elements
+interface SpiralArm {
+startAngle: number;
+length: number;
+width: number;
+tightness: number;
+starDensity: number;
+points: Vector2[];
+}
+
+interface GalaxyCore {
+position: Vector2;
+radius: number;
+brightness: number;
+pulseSpeed: number;
+particleCount: number;
+particles: CoreParticle[];
+}
+
+interface CoreParticle {
+position: Vector2;
+velocity: Vector2;
+brightness: number;
+size: number;
+}
+
+interface DarkMatterCloud {
+position: Vector2;
+size: number;
+density: number;
+drift: Vector2;
+pulsePhase: number;
+}
+
+interface DistantGalaxy {
+position: Vector2;
+size: number;
+brightness: number;
+color: string;
+type: ‘spiral’ | ‘elliptical’ | ‘irregular’;
+}
+
+interface JumpGate {
+id: string;
+from: string;
+to: string;
+position: Vector2;
+targetPosition: Vector2;
+active: boolean;
+distance: number;
+}
+
+interface TradeRoute {
+from: string;
+to: string;
+commodity: ResourceType;
+profitability: number;
+danger: number;
+}
+
+export default GalaxyScene;

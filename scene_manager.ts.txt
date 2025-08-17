@@ -1,0 +1,363 @@
+// scene_manager.ts - Scene Management System
+import { Renderer } from ‘./renderer’;
+import { Camera } from ‘./camera’;
+import { InputManager } from ‘./input_manager’;
+import { GameConfig } from ‘./game_config’;
+import { Vector2 } from ‘./basic_classes’;
+
+export interface IScene {
+name: string;
+initialize(): Promise<void>;
+update(deltaTime: number): void;
+render(renderer: Renderer, camera: Camera): void;
+handleInput(input: InputManager): void;
+onEnter(): void;
+onExit(): void;
+cleanup(): void;
+}
+
+export abstract class Scene implements IScene {
+public name: string;
+protected isActive: boolean = false;
+protected isInitialized: boolean = false;
+
+```
+constructor(name: string) {
+    this.name = name;
+}
+
+async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+    await this.onInitialize();
+    this.isInitialized = true;
+}
+
+protected abstract onInitialize(): Promise<void>;
+
+abstract update(deltaTime: number): void;
+abstract render(renderer: Renderer, camera: Camera): void;
+abstract handleInput(input: InputManager): void;
+
+onEnter(): void {
+    this.isActive = true;
+    console.log(`Entering scene: ${this.name}`);
+}
+
+onExit(): void {
+    this.isActive = false;
+    console.log(`Exiting scene: ${this.name}`);
+}
+
+cleanup(): void {
+    this.isActive = false;
+    this.isInitialized = false;
+}
+
+// Utility methods for scenes
+protected isSceneActive(): boolean {
+    return this.isActive;
+}
+```
+
+}
+
+export class SceneManager {
+private scenes: Map<string, IScene> = new Map();
+private currentScene: IScene | null = null;
+private nextScene: string | null = null;
+private transitionInProgress: boolean = false;
+private transitionDuration: number = 0.5;
+private transitionElapsed: number = 0;
+private transitionCallback: (() => void) | null = null;
+
+```
+// Scene transition effects
+private fadeOverlay: number = 0;
+private zoomTransition: boolean = false;
+
+constructor() {}
+
+// Scene registration
+registerScene(scene: IScene): void {
+    this.scenes.set(scene.name, scene);
+    console.log(`Registered scene: ${scene.name}`);
+}
+
+unregisterScene(sceneName: string): void {
+    const scene = this.scenes.get(sceneName);
+    if (scene) {
+        if (this.currentScene === scene) {
+            this.currentScene = null;
+        }
+        scene.cleanup();
+        this.scenes.delete(sceneName);
+        console.log(`Unregistered scene: ${sceneName}`);
+    }
+}
+
+// Scene switching
+async switchScene(sceneName: string, immediate: boolean = false): Promise<void> {
+    if (this.transitionInProgress) {
+        console.warn(`Scene transition already in progress. Ignoring switch to ${sceneName}`);
+        return;
+    }
+
+    const newScene = this.scenes.get(sceneName);
+    if (!newScene) {
+        console.error(`Scene '${sceneName}' not found`);
+        return;
+    }
+
+    console.log(`Switching to scene: ${sceneName}`);
+
+    if (immediate || !this.currentScene) {
+        await this.performImmediateSwitch(newScene);
+    } else {
+        this.startTransition(sceneName);
+    }
+}
+
+private async performImmediateSwitch(newScene: IScene): Promise<void> {
+    // Exit current scene
+    if (this.currentScene) {
+        this.currentScene.onExit();
+    }
+
+    // Initialize and enter new scene
+    await newScene.initialize();
+    this.currentScene = newScene;
+    this.currentScene.onEnter();
+}
+
+private startTransition(sceneName: string): void {
+    this.transitionInProgress = true;
+    this.nextScene = sceneName;
+    this.transitionElapsed = 0;
+    this.fadeOverlay = 0;
+
+    // Start fade out
+    console.log(`Starting transition to ${sceneName}`);
+}
+
+// Transition with callback
+transitionWithCallback(sceneName: string, callback: () => void): void {
+    this.transitionCallback = callback;
+    this.switchScene(sceneName);
+}
+
+// Smooth scene transition with camera zoom
+async transitionWithZoom(sceneName: string, camera: Camera, intermediateZoom: number = 0.1): Promise<void> {
+    if (this.transitionInProgress) return;
+
+    this.zoomTransition = true;
+    this.transitionInProgress = true;
+
+    // Phase 1: Zoom out
+    camera.setZoom(intermediateZoom);
+
+    // Wait for zoom out to complete
+    await new Promise<void>(resolve => {
+        const checkZoom = () => {
+            if (Math.abs(camera.zoom - intermediateZoom) < 0.01) {
+                resolve();
+            } else {
+                requestAnimationFrame(checkZoom);
+            }
+        };
+        checkZoom();
+    });
+
+    // Phase 2: Switch scene
+    await this.switchScene(sceneName, true);
+
+    // Phase 3: Zoom back in
+    camera.setZoom(1.0);
+    
+    // Wait for zoom in to complete
+    await new Promise<void>(resolve => {
+        const checkZoom = () => {
+            if (Math.abs(camera.zoom - 1.0) < 0.01) {
+                this.transitionInProgress = false;
+                this.zoomTransition = false;
+                resolve();
+            } else {
+                requestAnimationFrame(checkZoom);
+            }
+        };
+        checkZoom();
+    });
+}
+
+// Update transition state
+update(deltaTime: number): void {
+    if (!this.transitionInProgress || !this.nextScene) return;
+
+    this.transitionElapsed += deltaTime;
+    const progress = Math.min(this.transitionElapsed / this.transitionDuration, 1.0);
+
+    if (!this.zoomTransition) {
+        // Handle fade transition
+        if (progress < 0.5) {
+            // Fade out phase
+            this.fadeOverlay = progress * 2;
+        } else {
+            // Fade in phase
+            this.fadeOverlay = 2 - (progress * 2);
+            
+            // Switch scene at midpoint
+            if (progress >= 0.5 && this.currentScene) {
+                this.performMidTransitionSwitch();
+            }
+        }
+
+        // Complete transition
+        if (progress >= 1.0) {
+            this.completeTransition();
+        }
+    }
+}
+
+private async performMidTransitionSwitch(): Promise<void> {
+    if (!this.nextScene) return;
+
+    const newScene = this.scenes.get(this.nextScene);
+    if (!newScene) return;
+
+    // Exit current scene
+    if (this.currentScene) {
+        this.currentScene.onExit();
+    }
+
+    // Initialize and enter new scene
+    await newScene.initialize();
+    this.currentScene = newScene;
+    this.currentScene.onEnter();
+
+    // Execute callback if provided
+    if (this.transitionCallback) {
+        this.transitionCallback();
+        this.transitionCallback = null;
+    }
+}
+
+private completeTransition(): void {
+    this.transitionInProgress = false;
+    this.nextScene = null;
+    this.fadeOverlay = 0;
+    this.transitionElapsed = 0;
+    console.log(`Scene transition completed`);
+}
+
+// Render current scene and transition effects
+render(renderer: Renderer, camera: Camera): void {
+    // Render current scene
+    if (this.currentScene) {
+        this.currentScene.render(renderer, camera);
+    }
+
+    // Render transition overlay
+    if (this.transitionInProgress && !this.zoomTransition && this.fadeOverlay > 0) {
+        this.renderTransitionOverlay(renderer);
+    }
+}
+
+private renderTransitionOverlay(renderer: Renderer): void {
+    const alpha = Math.floor(this.fadeOverlay * 255);
+    const overlayColor = `rgba(26, 26, 42, ${this.fadeOverlay})`;
+    
+    renderer.drawPixelArt(
+        0, 0,
+        renderer.getWidth(),
+        renderer.getHeight(),
+        overlayColor
+    );
+}
+
+// Handle input for current scene
+handleInput(input: InputManager): void {
+    if (this.currentScene && !this.transitionInProgress) {
+        this.currentScene.handleInput(input);
+    }
+}
+
+// Update current scene
+updateCurrentScene(deltaTime: number): void {
+    if (this.currentScene && !this.transitionInProgress) {
+        this.currentScene.update(deltaTime);
+    }
+    
+    // Always update transition state
+    this.update(deltaTime);
+}
+
+// Getters and state queries
+getCurrentScene(): IScene | null {
+    return this.currentScene;
+}
+
+getCurrentSceneName(): string {
+    return this.currentScene ? this.currentScene.name : 'none';
+}
+
+hasScene(sceneName: string): boolean {
+    return this.scenes.has(sceneName);
+}
+
+isTransitioning(): boolean {
+    return this.transitionInProgress;
+}
+
+getRegisteredScenes(): string[] {
+    return Array.from(this.scenes.keys());
+}
+
+// Scene preloading
+async preloadScene(sceneName: string): Promise<void> {
+    const scene = this.scenes.get(sceneName);
+    if (scene) {
+        await scene.initialize();
+        console.log(`Preloaded scene: ${sceneName}`);
+    }
+}
+
+async preloadAllScenes(): Promise<void> {
+    const promises = Array.from(this.scenes.values()).map(scene => scene.initialize());
+    await Promise.all(promises);
+    console.log('All scenes preloaded');
+}
+
+// Configuration
+setTransitionDuration(duration: number): void {
+    this.transitionDuration = Math.max(0.1, duration);
+}
+
+// Cleanup
+cleanup(): void {
+    if (this.currentScene) {
+        this.currentScene.onExit();
+    }
+
+    this.scenes.forEach(scene => scene.cleanup());
+    this.scenes.clear();
+    
+    this.currentScene = null;
+    this.nextScene = null;
+    this.transitionInProgress = false;
+    this.transitionCallback = null;
+}
+
+// Debug information
+getDebugInfo(): any {
+    return {
+        currentScene: this.getCurrentSceneName(),
+        registeredScenes: this.getRegisteredScenes(),
+        isTransitioning: this.isTransitioning(),
+        transitionProgress: this.transitionElapsed / this.transitionDuration,
+        fadeOverlay: this.fadeOverlay
+    };
+}
+```
+
+}
+
+export default SceneManager;

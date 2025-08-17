@@ -1,0 +1,552 @@
+// Game State Management System
+import { Game } from './Game';
+
+export type GameState = 'loading' | 'menu' | 'playing' | 'paused' | 'inventory' | 'map' | 'trading' | 'research';
+
+export interface State {
+    enter?(): void;
+    exit?(): void;
+    update?(deltaTime: number): void;
+    render?(ctx: CanvasRenderingContext2D): void;
+    handleInput?(input: any): void;
+}
+
+export class LoadingState implements State {
+    constructor(private game: Game) {}
+    
+    enter(): void {
+        console.log('Entering loading state');
+    }
+    
+    update(deltaTime: number): void {
+        // Loading logic handled by main initialization
+    }
+    
+    render(ctx: CanvasRenderingContext2D): void {
+        // Loading screen is handled by HTML/CSS
+    }
+}
+
+export class PlayingState implements State {
+    constructor(private game: Game) {}
+    
+    enter(): void {
+        console.log('Entering playing state');
+        this.game.audioManager.playMusic('gameplay');
+    }
+    
+    exit(): void {
+        console.log('Exiting playing state');
+    }
+    
+    update(deltaTime: number): void {
+        // Update game world
+        this.game.sceneManager.update(deltaTime);
+        this.game.player.update(deltaTime, this.game.inputManager);
+        this.game.particleSystem.update(deltaTime);
+        this.game.camera.followPlayer(this.game.player, deltaTime);
+        
+        // Check for state transitions
+        if (this.game.inputManager.isKeyPressed('escape')) {
+            this.game.stateManager.setState('paused');
+        } else if (this.game.inputManager.isKeyPressed('i')) {
+            this.game.stateManager.setState('inventory');
+        } else if (this.game.inputManager.isKeyPressed('m')) {
+            this.game.stateManager.setState('map');
+        }
+    }
+    
+    render(ctx: CanvasRenderingContext2D): void {
+        // Render game world
+        this.game.sceneManager.render(ctx, this.game.camera);
+        this.game.player.render(ctx, this.game.camera);
+        this.game.particleSystem.render(ctx, this.game.camera);
+        
+        // Render HUD elements
+        this.renderHUD(ctx);
+    }
+    
+    private renderHUD(ctx: CanvasRenderingContext2D): void {
+        // Crosshair
+        ctx.strokeStyle = 'rgba(106, 161, 172, 0.8)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        
+        const centerX = this.game.getCanvas().width / 2;
+        const centerY = this.game.getCanvas().height / 2;
+        
+        ctx.beginPath();
+        ctx.moveTo(centerX - 10, centerY);
+        ctx.lineTo(centerX + 10, centerY);
+        ctx.moveTo(centerX, centerY - 10);
+        ctx.lineTo(centerX, centerY + 10);
+        ctx.stroke();
+        
+        // Coordinates and speed display
+        ctx.fillStyle = '#94c5ac';
+        ctx.font = '8px monospace';
+        ctx.textAlign = 'left';
+        
+        const player = this.game.player;
+        ctx.fillText(`X: ${Math.round(player.position.x)} AU`, 10, 20);
+        ctx.fillText(`Y: ${Math.round(player.position.y)} AU`, 10, 32);
+        
+        const speed = Math.sqrt(player.velocity.x ** 2 + player.velocity.y ** 2);
+        ctx.fillText(`V: ${(speed * 100).toFixed(1)} m/s`, 10, 44);
+        
+        // Current scene info
+        const sceneName = this.game.sceneManager.getCurrentSceneName();
+        ctx.fillText(`Scene: ${sceneName}`, 10, 56);
+        
+        // Fuel and energy status
+        ctx.fillText(`Fuel: ${player.systems.fuel.toFixed(0)}%`, 10, 68);
+        ctx.fillText(`Energy: ${player.systems.energy.toFixed(0)}%`, 10, 80);
+    }
+}
+
+export class PausedState implements State {
+    constructor(private game: Game) {}
+    
+    enter(): void {
+        console.log('Game paused');
+        this.game.audioManager.pauseMusic();
+        this.showPauseMenu();
+    }
+    
+    exit(): void {
+        console.log('Game resumed');
+        this.hidePauseMenu();
+        this.game.audioManager.resumeMusic();
+    }
+    
+    update(deltaTime: number): void {
+        // Handle pause menu input
+        if (this.game.inputManager.isKeyPressed('escape')) {
+            this.game.stateManager.setState('playing');
+        }
+    }
+    
+    render(ctx: CanvasRenderingContext2D): void {
+        // Render paused game world (dimmed)
+        ctx.globalAlpha = 0.5;
+        this.game.sceneManager.render(ctx, this.game.camera);
+        this.game.player.render(ctx, this.game.camera);
+        this.game.particleSystem.render(ctx, this.game.camera);
+        ctx.globalAlpha = 1.0;
+        
+        // Render pause overlay
+        this.renderPauseOverlay(ctx);
+    }
+    
+    private showPauseMenu(): void {
+        // Create pause menu if it doesn't exist
+        let pauseMenu = document.getElementById('pauseMenu');
+        if (!pauseMenu) {
+            pauseMenu = this.createPauseMenu();
+            document.body.appendChild(pauseMenu);
+        }
+        pauseMenu.classList.remove('hidden');
+    }
+    
+    private hidePauseMenu(): void {
+        const pauseMenu = document.getElementById('pauseMenu');
+        if (pauseMenu) {
+            pauseMenu.classList.add('hidden');
+        }
+    }
+    
+    private createPauseMenu(): HTMLElement {
+        const menu = document.createElement('div');
+        menu.id = 'pauseMenu';
+        menu.className = 'pause-menu';
+        menu.innerHTML = `
+            <div class="pause-panel">
+                <div class="pause-header">
+                    <h2>GAME PAUSED</h2>
+                </div>
+                <div class="pause-buttons">
+                    <button id="resumeBtn" class="pause-button">RESUME</button>
+                    <button id="saveBtn" class="pause-button">SAVE GAME</button>
+                    <button id="settingsBtn" class="pause-button">SETTINGS</button>
+                    <button id="mainMenuBtn" class="pause-button">MAIN MENU</button>
+                </div>
+            </div>
+        `;
+        
+        // Add event listeners
+        menu.querySelector('#resumeBtn')?.addEventListener('click', () => {
+            this.game.stateManager.setState('playing');
+        });
+        
+        menu.querySelector('#saveBtn')?.addEventListener('click', () => {
+            this.game.saveGame();
+        });
+        
+        menu.querySelector('#mainMenuBtn')?.addEventListener('click', () => {
+            if (confirm('Return to main menu? Unsaved progress will be lost.')) {
+                location.reload();
+            }
+        });
+        
+        return menu;
+    }
+    
+    private renderPauseOverlay(ctx: CanvasRenderingContext2D): void {
+        // Dark overlay
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(0, 0, this.game.getCanvas().width, this.game.getCanvas().height);
+        
+        // Pause text
+        ctx.fillStyle = '#94c5ac';
+        ctx.font = '24px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('PAUSED', 
+            this.game.getCanvas().width / 2, 
+            this.game.getCanvas().height / 2 - 50);
+        
+        // Instructions
+        ctx.font = '12px monospace';
+        ctx.fillText('Press ESC to resume', 
+            this.game.getCanvas().width / 2, 
+            this.game.getCanvas().height / 2 + 20);
+    }
+}
+
+export class InventoryState implements State {
+    constructor(private game: Game) {}
+    
+    enter(): void {
+        console.log('Opening inventory');
+        const inventoryScreen = document.getElementById('inventoryScreen');
+        if (inventoryScreen) {
+            inventoryScreen.classList.remove('hidden');
+            this.populateInventory();
+        }
+    }
+    
+    exit(): void {
+        console.log('Closing inventory');
+        const inventoryScreen = document.getElementById('inventoryScreen');
+        if (inventoryScreen) {
+            inventoryScreen.classList.add('hidden');
+        }
+    }
+    
+    update(deltaTime: number): void {
+        if (this.game.inputManager.isKeyPressed('escape') || 
+            this.game.inputManager.isKeyPressed('i')) {
+            this.game.stateManager.setState('playing');
+        }
+    }
+    
+    render(ctx: CanvasRenderingContext2D): void {
+        // Render dimmed game world behind inventory
+        ctx.globalAlpha = 0.3;
+        this.game.sceneManager.render(ctx, this.game.camera);
+        this.game.player.render(ctx, this.game.camera);
+        ctx.globalAlpha = 1.0;
+    }
+    
+    private populateInventory(): void {
+        const inventoryGrid = document.getElementById('inventoryGrid');
+        if (!inventoryGrid) return;
+        
+        // Clear existing items
+        inventoryGrid.innerHTML = '';
+        
+        // Add player inventory items
+        const inventory = this.game.player.inventory;
+        inventory.getAllItems().forEach(item => {
+            const itemElement = this.createInventoryItem(item);
+            inventoryGrid.appendChild(itemElement);
+        });
+    }
+    
+    private createInventoryItem(item: any): HTMLElement {
+        const element = document.createElement('div');
+        element.className = `inventory-item ${item.category}`;
+        element.innerHTML = `
+            <div class="item-icon">${item.icon}</div>
+            <div class="item-name">${item.name}</div>
+            <div class="item-quantity">${item.quantity}</div>
+        `;
+        
+        element.addEventListener('click', () => {
+            this.showItemDetails(item);
+        });
+        
+        return element;
+    }
+    
+    private showItemDetails(item: any): void {
+        // Show item details in a tooltip or modal
+        console.log('Item details:', item);
+    }
+}
+
+export class MapState implements State {
+    private zoomLevel: number = 1.0;
+    private mapOffset: { x: number; y: number } = { x: 0, y: 0 };
+    
+    constructor(private game: Game) {}
+    
+    enter(): void {
+        console.log('Opening map');
+    }
+    
+    exit(): void {
+        console.log('Closing map');
+    }
+    
+    update(deltaTime: number): void {
+        if (this.game.inputManager.isKeyPressed('escape') || 
+            this.game.inputManager.isKeyPressed('m')) {
+            this.game.stateManager.setState('playing');
+        }
+        
+        // Handle map navigation
+        const input = this.game.inputManager;
+        if (input.isKeyPressed('arrowup') || input.isKeyPressed('w')) {
+            this.mapOffset.y += 100 * deltaTime;
+        }
+        if (input.isKeyPressed('arrowdown') || input.isKeyPressed('s')) {
+            this.mapOffset.y -= 100 * deltaTime;
+        }
+        if (input.isKeyPressed('arrowleft') || input.isKeyPressed('a')) {
+            this.mapOffset.x += 100 * deltaTime;
+        }
+        if (input.isKeyPressed('arrowright') || input.isKeyPressed('d')) {
+            this.mapOffset.x -= 100 * deltaTime;
+        }
+        
+        // Handle zoom
+        if (input.isKeyPressed('equal') || input.isKeyPressed('+')) {
+            this.zoomLevel = Math.min(this.zoomLevel * 1.1, 5.0);
+        }
+        if (input.isKeyPressed('minus') || input.isKeyPressed('-')) {
+            this.zoomLevel = Math.max(this.zoomLevel * 0.9, 0.1);
+        }
+    }
+    
+    render(ctx: CanvasRenderingContext2D): void {
+        // Clear screen
+        ctx.fillStyle = '#060b11';
+        ctx.fillRect(0, 0, this.game.getCanvas().width, this.game.getCanvas().height);
+        
+        // Render galaxy map
+        this.renderGalaxyMap(ctx);
+        
+        // Render map UI
+        this.renderMapUI(ctx);
+    }
+    
+    private renderGalaxyMap(ctx: CanvasRenderingContext2D): void {
+        ctx.save();
+        
+        // Apply map transform
+        ctx.translate(this.game.getCanvas().width / 2, this.game.getCanvas().height / 2);
+        ctx.scale(this.zoomLevel, this.zoomLevel);
+        ctx.translate(this.mapOffset.x, this.mapOffset.y);
+        
+        // Render star systems
+        const galaxy = this.game.galaxy;
+        galaxy.starSystems.forEach(system => {
+            this.renderStarSystem(ctx, system);
+        });
+        
+        // Render player position
+        this.renderPlayerPosition(ctx);
+        
+        ctx.restore();
+    }
+    
+    private renderStarSystem(ctx: CanvasRenderingContext2D, system: any): void {
+        // System glow
+        const gradient = ctx.createRadialGradient(
+            system.position.x, system.position.y, 0,
+            system.position.x, system.position.y, system.size * 3
+        );
+        gradient.addColorStop(0, system.color);
+        gradient.addColorStop(0.7, system.color + '44');
+        gradient.addColorStop(1, 'transparent');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(
+            system.position.x - system.size * 3,
+            system.position.y - system.size * 3,
+            system.size * 6,
+            system.size * 6
+        );
+        
+        // System star
+        ctx.fillStyle = system.color;
+        ctx.beginPath();
+        ctx.arc(system.position.x, system.position.y, system.size, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // System name (if zoomed in enough)
+        if (this.zoomLevel > 1.5) {
+            ctx.fillStyle = '#DCD7C9';
+            ctx.font = `${Math.floor(8 / this.zoomLevel)}px monospace`;
+            ctx.textAlign = 'center';
+            ctx.fillText(system.name, 
+                system.position.x, 
+                system.position.y + system.size + 15);
+        }
+    }
+    
+    private renderPlayerPosition(ctx: CanvasRenderingContext2D): void {
+        const player = this.game.player;
+        
+        // Player indicator
+        ctx.fillStyle = '#6aa1ac';
+        ctx.strokeStyle = '#94c5ac';
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.arc(player.position.x, player.position.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        
+        // Player trail (recent movement)
+        // This would show the last few positions
+    }
+    
+    private renderMapUI(ctx: CanvasRenderingContext2D): void {
+        // Map title
+        ctx.fillStyle = '#94c5ac';
+        ctx.font = '16px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('GALAXY MAP', this.game.getCanvas().width / 2, 30);
+        
+        // Instructions
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('WASD: Navigate | +/-: Zoom | M/ESC: Close', 10, this.game.getCanvas().height - 20);
+        
+        // Zoom level indicator
+        ctx.textAlign = 'right';
+        ctx.fillText(`Zoom: ${this.zoomLevel.toFixed(1)}x`, this.game.getCanvas().width - 10, this.game.getCanvas().height - 20);
+        
+        // Mini compass
+        this.renderCompass(ctx);
+    }
+    
+    private renderCompass(ctx: CanvasRenderingContext2D): void {
+        const compassX = this.game.getCanvas().width - 60;
+        const compassY = 60;
+        const compassSize = 30;
+        
+        // Compass background
+        ctx.fillStyle = 'rgba(6, 11, 17, 0.8)';
+        ctx.strokeStyle = '#524C42';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(compassX, compassY, compassSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        
+        // Compass directions
+        ctx.fillStyle = '#94c5ac';
+        ctx.font = '8px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('N', compassX, compassY - compassSize + 12);
+        ctx.fillText('S', compassX, compassY + compassSize - 4);
+        ctx.textAlign = 'center';
+        ctx.fillText('W', compassX - compassSize + 8, compassY + 3);
+        ctx.fillText('E', compassX + compassSize - 8, compassY + 3);
+        
+        // Galactic center indicator
+        ctx.fillStyle = '#F97300';
+        ctx.beginPath();
+        ctx.arc(compassX, compassY, 3, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+export class StateManager {
+    private currentState: GameState = 'loading';
+    private states: Map<GameState, State>;
+    private stateHistory: GameState[] = [];
+    
+    constructor(private game: Game) {
+        this.states = new Map([
+            ['loading', new LoadingState(game)],
+            ['playing', new PlayingState(game)],
+            ['paused', new PausedState(game)],
+            ['inventory', new InventoryState(game)],
+            ['map', new MapState(game)]
+        ]);
+        
+        console.log('🎯 State Manager initialized');
+    }
+    
+    public setState(newState: GameState): void {
+        if (this.currentState === newState) {
+            console.warn(`⚠️ Already in state: ${newState}`);
+            return;
+        }
+        
+        console.log(`🔄 State transition: ${this.currentState} → ${newState}`);
+        
+        // Exit current state
+        const currentStateObj = this.states.get(this.currentState);
+        if (currentStateObj?.exit) {
+            currentStateObj.exit();
+        }
+        
+        // Add to history
+        this.stateHistory.push(this.currentState);
+        if (this.stateHistory.length > 10) {
+            this.stateHistory.shift();
+        }
+        
+        // Enter new state
+        this.currentState = newState;
+        const newStateObj = this.states.get(newState);
+        if (newStateObj?.enter) {
+            newStateObj.enter();
+        }
+    }
+    
+    public getCurrentState(): GameState {
+        return this.currentState;
+    }
+    
+    public getPreviousState(): GameState | undefined {
+        return this.stateHistory[this.stateHistory.length - 1];
+    }
+    
+    public goToPreviousState(): void {
+        const previousState = this.stateHistory.pop();
+        if (previousState) {
+            this.setState(previousState);
+        }
+    }
+    
+    public update(deltaTime: number): void {
+        const state = this.states.get(this.currentState);
+        if (state?.update) {
+            state.update(deltaTime);
+        }
+    }
+    
+    public render(ctx: CanvasRenderingContext2D): void {
+        const state = this.states.get(this.currentState);
+        if (state?.render) {
+            state.render(ctx);
+        }
+    }
+    
+    public handleInput(input: any): void {
+        const state = this.states.get(this.currentState);
+        if (state?.handleInput) {
+            state.handleInput(input);
+        }
+    }
+    
+    // Debug methods
+    public getStateHistory(): GameState[] {
+        return [...this.stateHistory];
+    }
+}

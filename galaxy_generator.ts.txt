@@ -1,0 +1,513 @@
+/**
+ * Galaxy Generator for Space Explorer 16-Bit
+ * Procedurally generates star systems and celestial bodies
+ */
+
+import { Vector2D, CelestialBody, StarSystem } from './basic_classes';
+
+interface PlanetType {
+    name: string;
+    baseColor: string;
+    atmosphereColor?: string;
+    minRadius: number;
+    maxRadius: number;
+    massMultiplier: number;
+    hasAtmosphere: boolean;
+    resourceTypes: string[];
+}
+
+export class GalaxyGenerator {
+    private static readonly PLANET_TYPES: PlanetType[] = [
+        {
+            name: 'Terrestrial',
+            baseColor: '#6aaf9d',
+            atmosphereColor: '#7077A1',
+            minRadius: 8,
+            maxRadius: 15,
+            massMultiplier: 1.0,
+            hasAtmosphere: true,
+            resourceTypes: ['iron', 'silicon', 'water', 'organic_compounds']
+        },
+        {
+            name: 'Desert',
+            baseColor: '#be794f',
+            minRadius: 6,
+            maxRadius: 12,
+            massMultiplier: 0.8,
+            hasAtmosphere: false,
+            resourceTypes: ['silicon', 'aluminum', 'rare_minerals']
+        },
+        {
+            name: 'Ice',
+            baseColor: '#94c5ac',
+            minRadius: 5,
+            maxRadius: 10,
+            massMultiplier: 0.7,
+            hasAtmosphere: false,
+            resourceTypes: ['water', 'hydrogen', 'deuterium']
+        },
+        {
+            name: 'Volcanic',
+            baseColor: '#d9626b',
+            minRadius: 7,
+            maxRadius: 14,
+            massMultiplier: 1.2,
+            hasAtmosphere: false,
+            resourceTypes: ['sulfur', 'iron', 'rare_earth_elements', 'geothermal_energy']
+        },
+        {
+            name: 'Gas Giant',
+            baseColor: '#7077A1',
+            atmosphereColor: '#424769',
+            minRadius: 20,
+            maxRadius: 40,
+            massMultiplier: 5.0,
+            hasAtmosphere: true,
+            resourceTypes: ['hydrogen', 'helium', 'methane', 'ammonia']
+        },
+        {
+            name: 'Toxic',
+            baseColor: '#5e1a20',
+            atmosphereColor: '#8d402f',
+            minRadius: 8,
+            maxRadius: 16,
+            massMultiplier: 1.1,
+            hasAtmosphere: true,
+            resourceTypes: ['toxic_compounds', 'heavy_metals', 'radioactive_materials']
+        }
+    ];
+
+    private static readonly STAR_TYPES = [
+        { name: 'Red Dwarf', color: '#d9626b', massMultiplier: 0.3, radiusMultiplier: 0.5 },
+        { name: 'Yellow Dwarf', color: '#ffeb99', massMultiplier: 1.0, radiusMultiplier: 1.0 },
+        { name: 'Blue Giant', color: '#7077A1', massMultiplier: 3.0, radiusMultiplier: 2.0 },
+        { name: 'White Dwarf', color: '#ffffff', massMultiplier: 0.8, radiusMultiplier: 0.3 },
+        { name: 'Orange Star', color: '#ffc27a', massMultiplier: 0.7, radiusMultiplier: 0.8 }
+    ];
+
+    private static readonly SYSTEM_NAMES = [
+        'Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta',
+        'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron', 'Pi',
+        'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega',
+        'Proxima', 'Centauri', 'Vega', 'Altair', 'Arcturus', 'Capella',
+        'Rigel', 'Betelgeuse', 'Aldebaran', 'Spica', 'Antares', 'Pollux'
+    ];
+
+    private static readonly PLANET_NAME_PARTS = [
+        'Kepler', 'Gliese', 'Trappist', 'Proxima', 'Wolf', 'Ross', 'HD',
+        'Prima', 'Secunda', 'Tertia', 'Quarta', 'Quinta', 'Sexta'
+    ];
+
+    static generateGalaxy(systemCount: number = 300): StarSystem[] {
+        const systems: StarSystem[] = [];
+        const usedNames = new Set<string>();
+
+        for (let i = 0; i < systemCount; i++) {
+            const system = this.generateStarSystem(i, usedNames);
+            systems.push(system);
+        }
+
+        return systems;
+    }
+
+    private static generateStarSystem(id: number, usedNames: Set<string>): StarSystem {
+        // Generate system position using spiral galaxy pattern
+        const spiralArm = Math.floor(Math.random() * 4); // 4 spiral arms
+        const armAngle = (spiralArm * Math.PI / 2) + (Math.random() * Math.PI / 3);
+        const distanceFromCenter = 200 + Math.random() * 800;
+        const spiralTightness = 0.005;
+        
+        const angle = armAngle + spiralTightness * distanceFromCenter;
+        const x = Math.cos(angle) * distanceFromCenter + (Math.random() - 0.5) * 100;
+        const y = Math.sin(angle) * distanceFromCenter + (Math.random() - 0.5) * 100;
+
+        // Generate unique system name
+        let systemName: string;
+        do {
+            const baseName = this.SYSTEM_NAMES[Math.floor(Math.random() * this.SYSTEM_NAMES.length)];
+            const suffix = Math.random() > 0.5 ? ` ${Math.floor(Math.random() * 999) + 1}` : 
+                          ` ${String.fromCharCode(65 + Math.floor(Math.random() * 26))}`;
+            systemName = baseName + suffix;
+        } while (usedNames.has(systemName));
+        
+        usedNames.add(systemName);
+
+        // Determine if binary/trinary system
+        const systemType = Math.random();
+        let stars: CelestialBody[] = [];
+        
+        if (systemType < 0.7) {
+            // Single star system
+            stars.push(this.generateStar(0, 0, 0));
+        } else if (systemType < 0.9) {
+            // Binary system
+            stars.push(this.generateStar(-50, 0, 0));
+            stars.push(this.generateStar(50, 0, 1));
+        } else {
+            // Trinary system
+            stars.push(this.generateStar(0, 0, 0));
+            stars.push(this.generateStar(-70, 0, 1));
+            stars.push(this.generateStar(35, 60, 2));
+        }
+
+        // Generate planets
+        const planetCount = 2 + Math.floor(Math.random() * 8);
+        const planets: CelestialBody[] = [];
+        
+        for (let i = 0; i < planetCount; i++) {
+            const planet = this.generatePlanet(stars[0], i, systemName);
+            planets.push(planet);
+            
+            // Generate moons for larger planets
+            if (planet.radius > 12 && Math.random() > 0.6) {
+                const moonCount = 1 + Math.floor(Math.random() * 3);
+                for (let j = 0; j < moonCount; j++) {
+                    const moon = this.generateMoon(planet, j);
+                    planets.push(moon);
+                }
+            }
+        }
+
+        // Generate asteroid belt
+        if (Math.random() > 0.5) {
+            const asteroidCount = 15 + Math.floor(Math.random() * 20);
+            for (let i = 0; i < asteroidCount; i++) {
+                const asteroid = this.generateAsteroid(stars[0], i);
+                planets.push(asteroid);
+            }
+        }
+
+        const celestialBodies = [...stars, ...planets];
+
+        return {
+            id,
+            name: systemName,
+            position: { x, y },
+            celestialBodies,
+            explored: id === 0, // Home system starts explored
+            economicData: this.generateEconomicData(),
+            threatLevel: this.calculateThreatLevel(celestialBodies)
+        };
+    }
+
+    private static generateStar(x: number, y: number, index: number): CelestialBody {
+        const starType = this.STAR_TYPES[Math.floor(Math.random() * this.STAR_TYPES.length)];
+        const baseRadius = 30 + Math.random() * 20;
+        const baseMass = 1000 + Math.random() * 500;
+
+        return {
+            id: `star_${index}`,
+            name: `${starType.name} ${index + 1}`,
+            type: 'star',
+            position: { x, y },
+            velocity: { x: 0, y: 0 },
+            radius: baseRadius * starType.radiusMultiplier,
+            mass: baseMass * starType.massMultiplier,
+            rotation: 0,
+            rotationSpeed: 0.01 + Math.random() * 0.02,
+            color: starType.color,
+            temperature: 3000 + Math.random() * 5000,
+            resources: ['fusion_fuel', 'plasma', 'solar_energy'],
+            habitabilityScore: 0
+        };
+    }
+
+    private static generatePlanet(centralStar: CelestialBody, index: number, systemName: string): CelestialBody {
+        const planetType = this.PLANET_TYPES[Math.floor(Math.random() * this.PLANET_TYPES.length)];
+        const orbitalDistance = 80 + (index * 40) + Math.random() * 30;
+        const radius = planetType.minRadius + Math.random() * (planetType.maxRadius - planetType.minRadius);
+        const mass = radius * radius * planetType.massMultiplier * 10;
+
+        // Calculate orbital position
+        const orbitAngle = Math.random() * Math.PI * 2;
+        const x = centralStar.position.x + Math.cos(orbitAngle) * orbitalDistance;
+        const y = centralStar.position.y + Math.sin(orbitAngle) * orbitalDistance;
+
+        // Calculate orbital velocity for stable orbit
+        const orbitalVelocity = Math.sqrt(centralStar.mass * 0.1 / orbitalDistance);
+        const velX = -Math.sin(orbitAngle) * orbitalVelocity * 0.1;
+        const velY = Math.cos(orbitAngle) * orbitalVelocity * 0.1;
+
+        const planetName = `${systemName} ${this.PLANET_NAME_PARTS[index % this.PLANET_NAME_PARTS.length]}`;
+
+        const planet: CelestialBody = {
+            id: `planet_${index}`,
+            name: planetName,
+            type: 'planet',
+            subType: planetType.name.toLowerCase(),
+            position: { x, y },
+            velocity: { x: velX, y: velY },
+            radius,
+            mass,
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: 0.01 + Math.random() * 0.05,
+            color: planetType.baseColor,
+            resources: planetType.resourceTypes,
+            habitabilityScore: this.calculateHabitability(planetType, orbitalDistance, centralStar),
+            orbitData: {
+                centerX: centralStar.position.x,
+                centerY: centralStar.position.y,
+                semiMajorAxis: orbitalDistance,
+                eccentricity: Math.random() * 0.1,
+                currentAngle: orbitAngle,
+                orbitalSpeed: orbitalVelocity * 0.001
+            }
+        };
+
+        // Add atmosphere if applicable
+        if (planetType.hasAtmosphere) {
+            planet.atmosphere = {
+                density: 0.5 + Math.random() * 0.5,
+                height: radius * (0.1 + Math.random() * 0.2),
+                color: planetType.atmosphereColor || planetType.baseColor,
+                composition: this.generateAtmosphereComposition(planetType)
+            };
+        }
+
+        return planet;
+    }
+
+    private static generateMoon(parentPlanet: CelestialBody, index: number): CelestialBody {
+        const moonDistance = parentPlanet.radius + 20 + (index * 15);
+        const moonRadius = 2 + Math.random() * 4;
+        const moonMass = moonRadius * moonRadius * 2;
+
+        const orbitAngle = Math.random() * Math.PI * 2;
+        const x = parentPlanet.position.x + Math.cos(orbitAngle) * moonDistance;
+        const y = parentPlanet.position.y + Math.sin(orbitAngle) * moonDistance;
+
+        const orbitalVelocity = Math.sqrt(parentPlanet.mass * 0.1 / moonDistance);
+        const velX = parentPlanet.velocity.x - Math.sin(orbitAngle) * orbitalVelocity * 0.05;
+        const velY = parentPlanet.velocity.y + Math.cos(orbitAngle) * orbitalVelocity * 0.05;
+
+        return {
+            id: `moon_${parentPlanet.id}_${index}`,
+            name: `${parentPlanet.name} ${index + 1}`,
+            type: 'moon',
+            position: { x, y },
+            velocity: { x: velX, y: velY },
+            radius: moonRadius,
+            mass: moonMass,
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: 0.02 + Math.random() * 0.08,
+            color: '#827d49',
+            resources: ['ice', 'rock', 'metals'],
+            habitabilityScore: 0,
+            orbitData: {
+                centerX: parentPlanet.position.x,
+                centerY: parentPlanet.position.y,
+                semiMajorAxis: moonDistance,
+                eccentricity: Math.random() * 0.05,
+                currentAngle: orbitAngle,
+                orbitalSpeed: orbitalVelocity * 0.005
+            }
+        };
+    }
+
+    private static generateAsteroid(centralStar: CelestialBody, index: number): CelestialBody {
+        const beltDistance = 300 + Math.random() * 100;
+        const asteroidRadius = 1 + Math.random() * 3;
+        const asteroidMass = asteroidRadius * 5;
+
+        const orbitAngle = Math.random() * Math.PI * 2;
+        const x = centralStar.position.x + Math.cos(orbitAngle) * beltDistance;
+        const y = centralStar.position.y + Math.sin(orbitAngle) * beltDistance;
+
+        const orbitalVelocity = Math.sqrt(centralStar.mass * 0.1 / beltDistance);
+        const velX = -Math.sin(orbitAngle) * orbitalVelocity * 0.08;
+        const velY = Math.cos(orbitAngle) * orbitalVelocity * 0.08;
+
+        return {
+            id: `asteroid_${index}`,
+            name: `Asteroid ${index + 1}`,
+            type: 'asteroid',
+            position: { x, y },
+            velocity: { x: velX, y: velY },
+            radius: asteroidRadius,
+            mass: asteroidMass,
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: (Math.random() - 0.5) * 0.1,
+            color: '#524C42',
+            resources: ['iron', 'nickel', 'platinum', 'rare_metals'],
+            habitabilityScore: 0,
+            orbitData: {
+                centerX: centralStar.position.x,
+                centerY: centralStar.position.y,
+                semiMajorAxis: beltDistance,
+                eccentricity: Math.random() * 0.2,
+                currentAngle: orbitAngle,
+                orbitalSpeed: orbitalVelocity * 0.0008
+            }
+        };
+    }
+
+    private static calculateHabitability(planetType: PlanetType, orbitalDistance: number, star: CelestialBody): number {
+        let score = 0;
+
+        // Goldilocks zone calculation
+        const idealDistance = Math.sqrt(star.mass / 1000) * 150; // Rough calculation
+        const distanceScore = Math.max(0, 1 - Math.abs(orbitalDistance - idealDistance) / idealDistance);
+        score += distanceScore * 40;
+
+        // Planet type bonus
+        if (planetType.name === 'Terrestrial') score += 30;
+        if (planetType.hasAtmosphere) score += 20;
+        if (planetType.resourceTypes.includes('water')) score += 10;
+
+        return Math.min(100, Math.max(0, score));
+    }
+
+    private static generateAtmosphereComposition(planetType: PlanetType): string[] {
+        const compositions: { [key: string]: string[] } = {
+            'Terrestrial': ['nitrogen', 'oxygen', 'argon', 'carbon_dioxide'],
+            'Toxic': ['sulfur_dioxide', 'methane', 'ammonia', 'hydrogen_sulfide'],
+            'Gas Giant': ['hydrogen', 'helium', 'methane', 'ammonia']
+        };
+
+        return compositions[planetType.name] || ['carbon_dioxide', 'nitrogen'];
+    }
+
+    private static generateEconomicData(): any {
+        return {
+            prosperity: Math.random(),
+            industrialization: Math.random(),
+            population: Math.floor(Math.random() * 1000000),
+            tradeRoutes: Math.floor(Math.random() * 5),
+            commodityPrices: {
+                fuel: 100 + Math.random() * 50,
+                food: 50 + Math.random() * 25,
+                metals: 75 + Math.random() * 30,
+                technology: 200 + Math.random() * 100
+            }
+        };
+    }
+
+    private static calculateThreatLevel(celestialBodies: CelestialBody[]): number {
+        let threatLevel = 0;
+        
+        // Base threat from system dangers
+        celestialBodies.forEach(body => {
+            if (body.type === 'star' && body.mass > 1500) threatLevel += 20;
+            if (body.subType === 'toxic') threatLevel += 10;
+            if (body.type === 'asteroid') threatLevel += 1;
+        });
+
+        // Add random faction presence
+        threatLevel += Math.random() * 50;
+
+        return Math.min(100, threatLevel);
+    }
+
+    static generateSpaceStations(starSystem: StarSystem): CelestialBody[] {
+        const stations: CelestialBody[] = [];
+        const stationCount = Math.floor(Math.random() * 3);
+
+        for (let i = 0; i < stationCount; i++) {
+            const stationType = ['trade', 'research', 'military', 'mining'][Math.floor(Math.random() * 4)];
+            const station = this.generateSpaceStation(starSystem, i, stationType);
+            stations.push(station);
+        }
+
+        return stations;
+    }
+
+    private static generateSpaceStation(starSystem: StarSystem, index: number, type: string): CelestialBody {
+        // Place station in orbit around a planet or in space
+        const planets = starSystem.celestialBodies.filter(body => body.type === 'planet');
+        let position: Vector2D;
+        let velocity: Vector2D;
+
+        if (planets.length > 0 && Math.random() > 0.3) {
+            // Orbit around planet
+            const planet = planets[Math.floor(Math.random() * planets.length)];
+            const orbitDistance = planet.radius + 25 + Math.random() * 15;
+            const orbitAngle = Math.random() * Math.PI * 2;
+            
+            position = {
+                x: planet.position.x + Math.cos(orbitAngle) * orbitDistance,
+                y: planet.position.y + Math.sin(orbitAngle) * orbitDistance
+            };
+
+            const orbitalVelocity = Math.sqrt(planet.mass * 0.1 / orbitDistance);
+            velocity = {
+                x: planet.velocity.x - Math.sin(orbitAngle) * orbitalVelocity * 0.05,
+                y: planet.velocity.y + Math.cos(orbitAngle) * orbitalVelocity * 0.05
+            };
+        } else {
+            // Free floating in space
+            const distance = 200 + Math.random() * 400;
+            const angle = Math.random() * Math.PI * 2;
+            position = {
+                x: Math.cos(angle) * distance,
+                y: Math.sin(angle) * distance
+            };
+            velocity = { x: 0, y: 0 };
+        }
+
+        const stationData = this.getStationTypeData(type);
+
+        return {
+            id: `station_${type}_${index}`,
+            name: `${stationData.name} ${index + 1}`,
+            type: 'station',
+            subType: type,
+            position,
+            velocity,
+            radius: stationData.radius,
+            mass: stationData.mass,
+            rotation: 0,
+            rotationSpeed: stationData.rotationSpeed,
+            color: stationData.color,
+            resources: stationData.resources,
+            habitabilityScore: stationData.habitability,
+            services: stationData.services
+        };
+    }
+
+    private static getStationTypeData(type: string): any {
+        const stationTypes: { [key: string]: any } = {
+            trade: {
+                name: 'Trade Hub',
+                radius: 12,
+                mass: 500,
+                rotationSpeed: 0.02,
+                color: '#6aaf9d',
+                resources: ['consumer_goods', 'luxury_items', 'food'],
+                habitability: 60,
+                services: ['trade', 'refuel', 'repair', 'information']
+            },
+            research: {
+                name: 'Research Station',
+                radius: 15,
+                mass: 400,
+                rotationSpeed: 0.01,
+                color: '#7077A1',
+                resources: ['scientific_equipment', 'data', 'research_materials'],
+                habitability: 40,
+                services: ['research', 'technology_upgrade', 'data_analysis']
+            },
+            military: {
+                name: 'Defense Platform',
+                radius: 10,
+                mass: 800,
+                rotationSpeed: 0.005,
+                color: '#d9626b',
+                resources: ['weapons', 'ammunition', 'military_supplies'],
+                habitability: 20,
+                services: ['military_contracts', 'weapon_upgrades', 'security']
+            },
+            mining: {
+                name: 'Mining Platform',
+                radius: 18,
+                mass: 600,
+                rotationSpeed: 0.03,
+                color: '#be794f',
+                resources: ['raw_materials', 'refined_metals', 'industrial_equipment'],
+                habitability: 30,
+                services: ['resource_processing', 'equipment_rental', 'raw_materials']
+            }
+        };
+
+        return stationTypes[type] || stationTypes.trade;
+    }
+}

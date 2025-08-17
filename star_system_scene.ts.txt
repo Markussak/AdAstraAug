@@ -1,0 +1,633 @@
+// star_system_scene.ts - Star System Scene
+import { Scene } from ‘./scene_manager’;
+import { Renderer } from ‘./renderer’;
+import { Camera } from ‘./camera’;
+import { InputManager } from ‘./input_manager’;
+import { CelestialBody, CelestialBodyType, CelestialBodyData, SurfaceFeature } from ‘./celestial_bodies’;
+import { Vector2 } from ‘./basic_classes’;
+import { GameConfig } from ‘./game_config’;
+
+export interface StarSystemData {
+name: string;
+centerPosition: Vector2;
+stars: CelestialBodyData[];
+planets: CelestialBodyData[];
+moons: CelestialBodyData[];
+asteroids: CelestialBodyData[];
+stations: CelestialBodyData[];
+}
+
+export class StarSystemScene extends Scene {
+private celestialBodies: CelestialBody[] = [];
+private stars: CelestialBody[] = [];
+private planets: CelestialBody[] = [];
+private moons: CelestialBody[] = [];
+private asteroids: CelestialBody[] = [];
+private stations: CelestialBody[] = [];
+
+```
+// Background elements
+private starField: StarFieldParticle[] = [];
+private nebulae: NebulaCloud[] = [];
+
+// System properties
+private systemName: string = '';
+private systemCenter: Vector2 = new Vector2(0, 0);
+private systemRadius: number = 1000;
+
+// Performance optimization
+private lastUpdateTime: number = 0;
+private updateInterval: number = 1000 / 60; // 60 FPS target
+
+constructor(name: string = 'StarSystem') {
+    super(name);
+}
+
+protected async onInitialize(): Promise<void> {
+    console.log('Initializing Star System Scene...');
+    
+    // Generate default solar system if no data provided
+    this.generateDefaultSolarSystem();
+    
+    // Create background elements
+    this.generateStarField();
+    this.generateNebulae();
+    
+    console.log(`Star System Scene initialized with ${this.celestialBodies.length} bodies`);
+}
+
+private generateDefaultSolarSystem(): void {
+    this.systemName = 'Sol System';
+    this.systemCenter = new Vector2(0, 0);
+    
+    // Create central star (Sol)
+    const sol = this.createStar({
+        name: 'Sol',
+        position: new Vector2(0, 0),
+        radius: 50,
+        mass: 1000,
+        baseColor: '#ffff88'
+    });
+    
+    // Create planets with realistic data
+    const planetConfigs = [
+        { name: 'Mercury', distance: 150, radius: 8, color: '#8c6a3d', mass: 10, speed: 0.015, type: CelestialBodyType.ROCKY_PLANET },
+        { name: 'Venus', distance: 200, radius: 10, color: '#ff6b35', mass: 15, speed: 0.012, type: CelestialBodyType.ROCKY_PLANET, atmosphere: '#ffaa44' },
+        { name: 'Earth', distance: 250, radius: 12, color: '#4a90e2', mass: 20, speed: 0.010, type: CelestialBodyType.OCEAN_PLANET, atmosphere: '#87ceeb' },
+        { name: 'Mars', distance: 320, radius: 9, color: '#d2691e', mass: 12, speed: 0.008, type: CelestialBodyType.DESERT_PLANET },
+        { name: 'Jupiter', distance: 520, radius: 35, color: '#d8ca9d', mass: 200, speed: 0.005, type: CelestialBodyType.GAS_GIANT, hasRings: true },
+        { name: 'Saturn', distance: 650, radius: 30, color: '#fad5a5', mass: 150, speed: 0.004, type: CelestialBodyType.GAS_GIANT, hasRings: true },
+    ];
+
+    planetConfigs.forEach((config, index) => {
+        const angle = (Math.PI * 2 / planetConfigs.length) * index + Math.random() * 0.5;
+        const planet = this.createPlanet({
+            name: config.name,
+            distance: config.distance,
+            angle: angle,
+            radius: config.radius,
+            color: config.color,
+            mass: config.mass,
+            orbitSpeed: config.speed,
+            type: config.type,
+            atmosphereColor: config.atmosphere,
+            hasRings: config.hasRings
+        });
+
+        // Add moons for larger planets
+        if (config.name === 'Earth') {
+            this.createMoon({
+                name: 'Luna',
+                parent: planet,
+                distance: 25,
+                radius: 3,
+                color: '#c0c0c0',
+                mass: 2,
+                orbitSpeed: 0.08
+            });
+        } else if (config.name === 'Jupiter') {
+            // Jupiter's major moons
+            const jupiterMoons = [
+                { name: 'Io', distance: 45, radius: 2, color: '#ffff99' },
+                { name: 'Europa', distance: 55, radius: 2.5, color: '#ffffff' },
+                { name: 'Ganymede', distance: 65, radius: 3, color: '#887766' },
+                { name: 'Callisto', distance: 80, radius: 2.5, color: '#444444' }
+            ];
+            
+            jupiterMoons.forEach((moon, moonIndex) => {
+                this.createMoon({
+                    name: moon.name,
+                    parent: planet,
+                    distance: moon.distance,
+                    radius: moon.radius,
+                    color: moon.color,
+                    mass: 1,
+                    orbitSpeed: 0.15 - moonIndex * 0.03,
+                    angle: (moonIndex / jupiterMoons.length) * Math.PI * 2
+                });
+            });
+        }
+    });
+
+    // Create asteroid belt
+    this.generateAsteroidBelt(400, 450, 150);
+    
+    // Add some space stations
+    this.createSpaceStation({
+        name: 'Earth Station Alpha',
+        distance: 260,
+        angle: Math.PI / 4,
+        size: 'large'
+    });
+}
+
+private createStar(config: {
+    name: string,
+    position: Vector2,
+    radius: number,
+    mass: number,
+    baseColor: string
+}): CelestialBody {
+    const starData: CelestialBodyData = {
+        name: config.name,
+        type: CelestialBodyType.STAR,
+        position: config.position,
+        radius: config.radius,
+        mass: config.mass,
+        color: config.baseColor,
+        rotationSpeed: 0.005
+    };
+    
+    const star = new CelestialBody(starData);
+    this.celestialBodies.push(star);
+    this.stars.push(star);
+    return star;
+}
+
+private createPlanet(config: {
+    name: string,
+    distance: number,
+    angle: number,
+    radius: number,
+    color: string,
+    mass: number,
+    orbitSpeed: number,
+    type: CelestialBodyType,
+    atmosphereColor?: string,
+    hasRings?: boolean
+}): CelestialBody {
+    const position = new Vector2(
+        Math.cos(config.angle) * config.distance,
+        Math.sin(config.angle) * config.distance
+    );
+
+    const surfaceFeatures = this.generateSurfaceFeatures(config.type, config.radius);
+
+    const planetData: CelestialBodyData = {
+        name: config.name,
+        type: config.type,
+        position: position,
+        radius: config.radius,
+        mass: config.mass,
+        color: config.color,
+        rotationSpeed: 0.02 + Math.random() * 0.01,
+        orbitDistance: config.distance,
+        orbitSpeed: config.orbitSpeed,
+        orbitCenter: this.systemCenter,
+        atmosphereColor: config.atmosphereColor,
+        hasRings: config.hasRings,
+        surfaceFeatures: surfaceFeatures
+    };
+
+    const planet = new CelestialBody(planetData);
+    this.celestialBodies.push(planet);
+    this.planets.push(planet);
+    return planet;
+}
+
+private createMoon(config: {
+    name: string,
+    parent: CelestialBody,
+    distance: number,
+    radius: number,
+    color: string,
+    mass: number,
+    orbitSpeed: number,
+    angle?: number
+}): CelestialBody {
+    const angle = config.angle || Math.random() * Math.PI * 2;
+    const position = new Vector2(
+        config.parent.position.x + Math.cos(angle) * config.distance,
+        config.parent.position.y + Math.sin(angle) * config.distance
+    );
+
+    const moonData: CelestialBodyData = {
+        name: config.name,
+        type: CelestialBodyType.MOON,
+        position: position,
+        radius: config.radius,
+        mass: config.mass,
+        color: config.color,
+        rotationSpeed: config.orbitSpeed,
+        orbitDistance: config.distance,
+        orbitSpeed: config.orbitSpeed,
+        orbitCenter: config.parent.position,
+        surfaceFeatures: this.generateSurfaceFeatures(CelestialBodyType.MOON, config.radius)
+    };
+
+    const moon = new CelestialBody(moonData);
+    this.celestialBodies.push(moon);
+    this.moons.push(moon);
+    return moon;
+}
+
+private generateAsteroidBelt(innerRadius: number, outerRadius: number, count: number): void {
+    for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = innerRadius + Math.random() * (outerRadius - innerRadius);
+        const position = new Vector2(
+            Math.cos(angle) * distance,
+            Math.sin(angle) * distance
+        );
+
+        const asteroidData: CelestialBodyData = {
+            name: `Asteroid ${i + 1}`,
+            type: CelestialBodyType.ASTEROID,
+            position: position,
+            radius: 2 + Math.random() * 8,
+            mass: 1 + Math.random() * 5,
+            color: GameConfig.COLORS.HULL_SECONDARY,
+            rotationSpeed: (Math.random() - 0.5) * 0.05,
+            orbitDistance: distance,
+            orbitSpeed: 0.003 + Math.random() * 0.002,
+            orbitCenter: this.systemCenter
+        };
+
+        const asteroid = new CelestialBody(asteroidData);
+        this.celestialBodies.push(asteroid);
+        this.asteroids.push(asteroid);
+    }
+}
+
+private createSpaceStation(config: {
+    name: string,
+    distance: number,
+    angle: number,
+    size: 'small' | 'medium' | 'large'
+}): CelestialBody {
+    const position = new Vector2(
+        Math.cos(config.angle) * config.distance,
+        Math.sin(config.angle) * config.distance
+    );
+
+    const sizeMap = { small: 5, medium: 8, large: 12 };
+    const radius = sizeMap[config.size];
+
+    const stationData: CelestialBodyData = {
+        name: config.name,
+        type: CelestialBodyType.SPACE_STATION,
+        position: position,
+        radius: radius,
+        mass: 50,
+        color: GameConfig.COLORS.HULL_PRIMARY,
+        rotationSpeed: 0.01,
+        orbitDistance: config.distance,
+        orbitSpeed: Math.sqrt(1000 * GameConfig.GRAVITATIONAL_CONSTANT / config.distance) * 0.1,
+        orbitCenter: this.systemCenter
+    };
+
+    const station = new CelestialBody(stationData);
+    this.celestialBodies.push(station);
+    this.stations.push(station);
+    return station;
+}
+
+private generateSurfaceFeatures(type: CelestialBodyType, radius: number): SurfaceFeature[] {
+    const features: SurfaceFeature[] = [];
+    const featureCount = Math.floor(radius / 5) + 2;
+
+    for (let i = 0; i < featureCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = Math.random() * 0.8;
+        const position = new Vector2(
+            Math.cos(angle) * distance,
+            Math.sin(angle) * distance
+        );
+
+        let featureType: SurfaceFeature['type'];
+        let color: string;
+
+        switch (type) {
+            case CelestialBodyType.OCEAN_PLANET:
+                featureType = Math.random() > 0.5 ? 'ocean' : 'crater';
+                color = featureType === 'ocean' ? GameConfig.COLORS.ACCENT_FRIENDLY : 'rgba(0,0,0,0.6)';
+                break;
+            case CelestialBodyType.DESERT_PLANET:
+                featureType = Math.random() > 0.7 ? 'mountain' : 'crater';
+                color = featureType === 'mountain' ? GameConfig.COLORS.HULL_SECONDARY : 'rgba(0,0,0,0.4)';
+                break;
+            case CelestialBodyType.ICE_PLANET:
+                featureType = Math.random() > 0.6 ? 'ice_cap' : 'crater';
+                color = featureType === 'ice_cap' ? '#ffffff' : 'rgba(0,0,0,0.3)';
+                break;
+            case CelestialBodyType.VOLCANIC_PLANET:
+                featureType = Math.random() > 0.5 ? 'volcano' : 'crater';
+                color = featureType === 'volcano' ? GameConfig.COLORS.FX_GLOW_SECONDARY : 'rgba(0,0,0,0.5)';
+                break;
+            default:
+                featureType = 'crater';
+                color = 'rgba(0,0,0,0.4)';
+        }
+
+        features.push({
+            type: featureType,
+            position: position,
+            size: 0.1 + Math.random() * 0.2,
+            color: color,
+            intensity: 0.3 + Math.random() * 0.4
+        });
+    }
+
+    return features;
+}
+
+private generateStarField(): void {
+    // Generate background stars with parallax layers
+    const starCount = 300;
+    
+    for (let i = 0; i < starCount; i++) {
+        const star: StarFieldParticle = {
+            position: new Vector2(
+                (Math.random() - 0.5) * 4000,
+                (Math.random() - 0.5) * 3000
+            ),
+            brightness: Math.random(),
+            twinklePhase: Math.random() * Math.PI * 2,
+            twinkleSpeed: 1 + Math.random() * 2,
+            parallaxLayer: Math.floor(Math.random() * 3),
+            size: Math.random() > 0.9 ? 2 : 1
+        };
+        
+        this.starField.push(star);
+    }
+}
+
+private generateNebulae(): void {
+    // Add some distant nebula clouds for atmosphere
+    const nebulaCount = 3;
+    
+    for (let i = 0; i < nebulaCount; i++) {
+        const nebula: NebulaCloud = {
+            position: new Vector2(
+                (Math.random() - 0.5) * 2000,
+                (Math.random() - 0.5) * 1500
+            ),
+            size: 200 + Math.random() * 300,
+            color: [GameConfig.COLORS.ACCENT_FRIENDLY, GameConfig.COLORS.FX_GLOW_SECONDARY, GameConfig.COLORS.ACCENT_NEUTRAL][i],
+            alpha: 0.1 + Math.random() * 0.1,
+            drift: new Vector2(
+                (Math.random() - 0.5) * 10,
+                (Math.random() - 0.5) * 10
+            )
+        };
+        
+        this.nebulae.push(nebula);
+    }
+}
+
+update(deltaTime: number): void {
+    if (!this.isSceneActive()) return;
+
+    // Throttle updates for performance
+    const currentTime = Date.now();
+    if (currentTime - this.lastUpdateTime < this.updateInterval) {
+        return;
+    }
+    this.lastUpdateTime = currentTime;
+
+    // Update all celestial bodies
+    this.celestialBodies.forEach(body => {
+        body.update(deltaTime);
+    });
+
+    // Update moons to orbit around their parent planets
+    this.updateMoonOrbits(deltaTime);
+
+    // Update background elements
+    this.updateStarField(deltaTime);
+    this.updateNebulae(deltaTime);
+}
+
+private updateMoonOrbits(deltaTime: number): void {
+    this.moons.forEach(moon => {
+        // Find parent planet (simple approach - could be optimized)
+        const parent = this.planets.find(planet => {
+            const distance = moon.position.distanceTo(planet.position);
+            return distance < planet.radius * 5; // Rough parent detection
+        });
+
+        if (parent) {
+            // Update orbit center to follow parent
+            moon.orbitCenter = parent.position.clone();
+        }
+    });
+}
+
+private updateStarField(deltaTime: number): void {
+    this.starField.forEach(star => {
+        star.twinklePhase += star.twinkleSpeed * deltaTime;
+    });
+}
+
+private updateNebulae(deltaTime: number): void {
+    this.nebulae.forEach(nebula => {
+        nebula.position = nebula.position.add(nebula.drift.multiply(deltaTime));
+    });
+}
+
+render(renderer: Renderer, camera: Camera): void {
+    // Render background elements
+    this.renderStarField(renderer, camera);
+    this.renderNebulae(renderer, camera);
+
+    // Sort celestial bodies by distance from camera for proper depth rendering
+    const sortedBodies = [...this.celestialBodies].sort((a, b) => {
+        const distA = a.position.distanceTo(new Vector2(camera.centerX, camera.centerY));
+        const distB = b.position.distanceTo(new Vector2(camera.centerX, camera.centerY));
+        return distB - distA; // Render furthest first
+    });
+
+    // Render celestial bodies
+    sortedBodies.forEach(body => {
+        if (body.isInView(camera, renderer.getWidth(), renderer.getHeight())) {
+            body.render(renderer, camera);
+        }
+    });
+
+    // Render system info
+    this.renderSystemInfo(renderer);
+}
+
+private renderStarField(renderer: Renderer, camera: Camera): void {
+    this.starField.forEach(star => {
+        const parallaxFactor = 0.1 + star.parallaxLayer * 0.05;
+        const screenPos = new Vector2(
+            star.position.x - camera.centerX * parallaxFactor,
+            star.position.y - camera.centerY * parallaxFactor
+        );
+
+        // Wrap stars around screen edges
+        const wrappedX = ((screenPos.x % renderer.getWidth()) + renderer.getWidth()) % renderer.getWidth();
+        const wrappedY = ((screenPos.y % renderer.getHeight()) + renderer.getHeight()) % renderer.getHeight();
+
+        // Twinkling effect
+        const twinkle = Math.sin(star.twinklePhase) * 0.3 + 0.7;
+        const alpha = star.brightness * twinkle;
+
+        const ctx = renderer.getContext();
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(wrappedX, wrappedY, star.size, star.size);
+        ctx.restore();
+    });
+}
+
+private renderNebulae(renderer: Renderer, camera: Camera): void {
+    this.nebulae.forEach(nebula => {
+        const screenPos = camera.worldToScreen(nebula.position, renderer.getWidth(), renderer.getHeight());
+        const size = nebula.size * camera.zoom;
+
+        if (size > 10) { // Only render if large enough to see
+            renderer.drawRadialGradient(
+                screenPos.x, screenPos.y,
+                0, size,
+                nebula.color + Math.floor(nebula.alpha * 255).toString(16).padStart(2, '0'),
+                nebula.color + '00'
+            );
+        }
+    });
+}
+
+private renderSystemInfo(renderer: Renderer): void {
+    // System name and info in top-left
+    renderer.drawText(this.systemName, 10, 10, GameConfig.COLORS.HULL_PRIMARY, 8);
+    renderer.drawText(`Bodies: ${this.celestialBodies.length}`, 10, 25, GameConfig.COLORS.ACCENT_FRIENDLY, 6);
+    renderer.drawText(`Stars: ${this.stars.length} | Planets: ${this.planets.length}`, 10, 35, GameConfig.COLORS.ACCENT_FRIENDLY, 6);
+}
+
+handleInput(input: InputManager): void {
+    // System-specific input handling can be added here
+    // For now, input is handled by the main game loop
+}
+
+// Public methods for external access
+getCelestialBodies(): CelestialBody[] {
+    return [...this.celestialBodies];
+}
+
+getStars(): CelestialBody[] {
+    return [...this.stars];
+}
+
+getPlanets(): CelestialBody[] {
+    return [...this.planets];
+}
+
+getNearestBody(position: Vector2, maxDistance: number = Infinity): CelestialBody | null {
+    let nearestBody: CelestialBody | null = null;
+    let nearestDistance = maxDistance;
+
+    this.celestialBodies.forEach(body => {
+        const distance = body.distanceTo(position);
+        if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestBody = body;
+        }
+    });
+
+    return nearestBody;
+}
+
+getSystemData(): StarSystemData {
+    return {
+        name: this.systemName,
+        centerPosition: this.systemCenter.clone(),
+        stars: this.stars.map(star => star.toData()),
+        planets: this.planets.map(planet => planet.toData()),
+        moons: this.moons.map(moon => moon.toData()),
+        asteroids: this.asteroids.map(asteroid => asteroid.toData()),
+        stations: this.stations.map(station => station.toData())
+    };
+}
+
+loadSystemData(data: StarSystemData): void {
+    this.systemName = data.name;
+    this.systemCenter = data.centerPosition;
+    
+    // Clear existing bodies
+    this.celestialBodies = [];
+    this.stars = [];
+    this.planets = [];
+    this.moons = [];
+    this.asteroids = [];
+    this.stations = [];
+
+    // Load stars
+    data.stars.forEach(starData => {
+        const star = new CelestialBody(starData);
+        this.celestialBodies.push(star);
+        this.stars.push(star);
+    });
+
+    // Load planets
+    data.planets.forEach(planetData => {
+        const planet = new CelestialBody(planetData);
+        this.celestialBodies.push(planet);
+        this.planets.push(planet);
+    });
+
+    // Load moons
+    data.moons.forEach(moonData => {
+        const moon = new CelestialBody(moonData);
+        this.celestialBodies.push(moon);
+        this.moons.push(moon);
+    });
+
+    // Load asteroids
+    data.asteroids.forEach(asteroidData => {
+        const asteroid = new CelestialBody(asteroidData);
+        this.celestialBodies.push(asteroid);
+        this.asteroids.push(asteroid);
+    });
+
+    // Load stations
+    data.stations.forEach(stationData => {
+        const station = new CelestialBody(stationData);
+        this.celestialBodies.push(station);
+        this.stations.push(station);
+    });
+}
+```
+
+}
+
+// Background element interfaces
+interface StarFieldParticle {
+position: Vector2;
+brightness: number;
+twinklePhase: number;
+twinkleSpeed: number;
+parallaxLayer: number;
+size: number;
+}
+
+interface NebulaCloud {
+position: Vector2;
+size: number;
+color: string;
+alpha: number;
+drift: Vector2;
+}
+
+export default StarSystemScene;

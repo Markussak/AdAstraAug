@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Explorer 16-Bit</title>
+    <link rel="stylesheet" href="src/styles/main.css">
+    <link rel="stylesheet" href="src/styles/ui.css">
+    <link rel="stylesheet" href="src/styles/effects.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P:wght@400&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="crt-bezel">
+            <div class="crt-screen">
+                <div class="scan-lines"></div>
+                <div class="loading-content">
+                    <div class="system-logo">
+                        <div class="logo-text">SPACE EXPLORER</div>
+                        <div class="logo-subtitle">16-BIT EDITION</div>
+                        <div class="logo-version">v2.1.47</div>
+                    </div>
+                    
+                    <div class="loading-sequence">
+                        <div id="loadingBar" class="loading-bar">
+                            <div id="loadingFill" class="loading-fill"></div>
+                            <div class="loading-segments">
+                                <div class="segment"></div>
+                                <div class="segment"></div>
+                                <div class="segment"></div>
+                                <div class="segment"></div>
+                                <div class="segment"></div>
+                                <div class="segment"></div>
+                                <div class="segment"></div>
+                                <div class="segment"></div>
+                            </div>
+                        </div>
+                        <div id="loadingText" class="loading-text">INITIALIZING QUANTUM MATRIX...</div>
+                    </div>
+                    
+                    <div class="system-status">
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <span class="status-label">QUANTUM DRIVE:</span>
+                                <span id="quantumStatus" class="status-value nominal">NOMINAL</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">LIFE SUPPORT:</span>
+                                <span id="lifeStatus" class="status-value active">ACTIVE</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">NAVIGATION:</span>
+                                <span id="navStatus" class="status-value calibrating">CALIBRATING</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">WEAPONS:</span>
+                                <span id="weaponStatus" class="status-value offline">OFFLINE</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">SHIELDS:</span>
+                                <span id="shieldStatus" class="status-value standby">STANDBY</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">WARP CORE:</span>
+                                <span id="warpStatus" class="status-value charging">CHARGING</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Menu -->
+    <div id="mainMenu" class="main-menu hidden">
+        <div class="crt-bezel">
+            <div class="crt-screen">
+                <div class="scan-lines"></div>
+                <div class="menu-content">
+                    <div class="menu-title">
+                        <div class="title-main">SPACE EXPLORER</div>
+                        <div class="title-sub">GALACTIC COMMAND INTERFACE</div>
+                    </div>
+                    
+                    <div class="menu-buttons">
+                        <button id="newGameBtn" class="menu-button">
+                            <span class="button-text">NEW EXPEDITION</span>
+                            <span class="button-desc">Start new galactic exploration</span>
+                        </button>
+                        <button id="loadGameBtn" class="menu-button">
+                            <span class="button-text">LOAD MISSION</span>
+                            <span class="button-desc">Continue previous expedition</span>
+                        </button>
+                        <button id="settingsBtn" class="menu-button">
+                            <span class="button-text">SYSTEM CONFIG</span>
+                            <span class="button-desc">Adjust game parameters</span>
+                        </button>
+                        <button id="creditsBtn" class="menu-button">
+                            <span class="button-text">CREW MANIFEST</span>
+                            <span class="button-desc">View development credits</span>
+                        </button>
+                    </div>
+                    
+                    <div class="menu-footer">
+                        <div class="system-info">
+                            <div>GALACTIC STANDARD DATE: 2387.156</div>
+                            <div>SYSTEM BUILD: ALPHA-0.1.0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Setup Screen -->
+    <div id="gameSetup" class="game-setup hidden">
+        <div class="setup-panels">
+            <div class="setup-panel">
+                <div class="panel-header">GALAXY PARAMETERS</div>
+                <div class="setup-controls">
+                    <div class="control-group">
+                        <label>Galaxy Size:</label>
+                        <select id="galaxySize">
+                            <option value="small">Small (100 systems)</option>
+                            <option value="medium" selected>Medium (250 systems)</option>
+                            <option value="large">Large (500 systems)</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>Economic Complexity:</label>
+                        <select id="economicComplexity">
+                            <option value="simple">Simple</option>
+                            <option value="balanced" selected>Balanced</option>
+                            <option value="complex">Complex</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="setup-panel">
+                <div class="panel-header">DIFFICULTY SETTINGS</div>
+                <div class="setup-controls">
+                    <div class="control-group">
+                        <label>Combat Difficulty:</label>
+                        <select id="combatDifficulty">
+                            <option value="easy">Cadet</option>
+                            <option value="normal" selected>Officer</option>
+                            <option value="hard">Veteran</option>
+                            <option value="nightmare">Nightmare</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>Resource Scarcity:</label>
+                        <select id="resourceScarcity">
+                            <option value="abundant">Abundant</option>
+                            <option value="normal" selected>Normal</option>
+                            <option value="scarce">Scarce</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="setup-buttons">
+            <button id="startGameBtn" class="setup-button primary">
+                LAUNCH EXPEDITION
+            </button>
+            <button id="backToMenuBtn" class="setup-button">
+                ABORT MISSION
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- CRT Effect Overlay -->
+    <div id="crtOverlay" class="crt-overlay hidden">
+        <div class="scanlines"></div>
+        <div class="phosphor-glow"></div>
+    </div>
+
+    <!-- Mobile Touch Controls -->
+    <div id="mobileControls" class="mobile-controls hidden">
+        <div id="virtualJoystick" class="virtual-joystick">
+            <div class="joystick-base">
+                <div id="joystickKnob" class="joystick-knob"></div>
+            </div>
+        </div>
+        
+        <div class="action-buttons">
+            <div id="thrustBtn" class="action-button">
+                <span>THRUST</span>
+            </div>
+            <div id="fireBtn" class="action-button">
+                <span>FIRE</span>
+            </div>
+            <div id="shieldBtn2" class="action-button">
+                <span>SHIELD</span>
+            </div>
+            <div id="warpBtn2" class="action-button">
+                <span>WARP</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Bar UI -->
+    <div id="statusBar" class="status-bar hidden">
+        <!-- Ship Systems Panel -->
+        <div class="ui-panel ship-systems">
+            <div class="panel-header">
+                <div class="panel-title">SHIP SYSTEMS</div>
+                <div class="panel-indicator active"></div>
+            </div>
+            <div class="panel-content">
+                <div class="system-indicator">
+                    <span class="indicator-label">HULL</span>
+                    <div class="indicator-bar">
+                        <div id="hullBar" class="bar-fill" style="width: 100%;"></div>
+                    </div>
+                    <span class="indicator-value" id="hullValue">100%</span>
+                </div>
+                <div class="system-indicator">
+                    <span class="indicator-label">SHLD</span>
+                    <div class="indicator-bar">
+                        <div id="shieldBar" class="bar-fill shield" style="width: 85%;"></div>
+                    </div>
+                    <span class="indicator-value" id="shieldValue">85%</span>
+                </div>
+                <div class="system-indicator">
+                    <span class="indicator-label">FUEL</span>
+                    <div class="indicator-bar">
+                        <div id="fuelBar" class="bar-fill fuel" style="width: 75%;"></div>
+                    </div>
+                    <span class="indicator-value" id="fuelValue">75%</span>
+                </div>
+                <div class="system-indicator">
+                    <span class="indicator-label">ENGY</span>
+                    <div class="indicator-bar">
+                        <div id="energyBar" class="bar-fill energy" style="width: 90%;"></div>
+                    </div>
+                    <span class="indicator-value" id="energyValue">90%</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Controls Panel -->
+        <div class="ui-panel controls">
+            <div class="panel-header">
+                <div class="panel-title">CONTROLS</div>
+                <div class="panel-indicator active"></div>
+            </div>
+            <div class="panel-content">
+                <div class="control-grid">
+                    <button id="shieldBtn" class="control-button active">
+                        <span>SHLD</span>
+                    </button>
+                    <button id="warpBtn" class="control-button">
+                        <span>WARP</span>
+                    </button>
+                    <button id="engineBtn" class="control-button active">
+                        <span>ENG</span>
+                    </button>
+                    <button id="reactorBtn" class="control-button active">
+                        <span>RCTR</span>
+                    </button>
+                </div>
+                <div class="system-indicator">
+                    <span class="indicator-label">THRT</span>
+                    <div class="indicator-bar">
+                        <div id="thrustBar" class="bar-fill thrust" style="width: 0%;"></div>
+                    </div>
+                    <span class="indicator-value" id="thrustValue">0%</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Ship Status Monitor -->
+        <div class="ui-panel status-monitor">
+            <div class="panel-header">
+                <div class="panel-title">SHIP STATUS</div>
+                <div class="panel-indicator active"></div>
+            </div>
+            <div class="panel-content">
+                <div class="ship-schematic">
+                    <div id="section1" class="ship-section" data-section="BOW">BOW</div>
+                    <div id="section2" class="ship-section" data-section="PORT">PRT</div>
+                    <div id="section3" class="ship-section" data-section="STAR">STR</div>
+                    <div id="section4" class="ship-section" data-section="AFT">AFT</div>
+                    <div id="section5" class="ship-section critical" data-section="ENG">ENG</div>
+                    <div id="section6" class="ship-section critical" data-section="LIFE">LIF</div>
+                    <div id="section7" class="ship-section critical" data-section="NAV">NAV</div>
+                    <div id="section8" class="ship-section" data-section="COM">COM</div>
+                </div>
+                <div class="system-buttons">
+                    <button id="inventoryBtn" class="system-button">INV</button>
+                    <button id="codexBtn" class="system-button">CDX</button>
+                    <button id="researchBtn" class="system-button">RSH</button>
+                    <button id="crewBtn" class="system-button">CRW</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Weapons Panel -->
+        <div class="ui-panel weapons">
+            <div class="panel-header">
+                <div class="panel-title">WEAPONS</div>
+                <div class="panel-indicator active"></div>
+            </div>
+            <div class="panel-content">
+                <div class="weapon-grid">
+                    <button id="laserBtn" class="weapon-button active">LASR</button>
+                    <button id="missileBtn" class="weapon-button">MSLS</button>
+                    <button id="railgunBtn" class="weapon-button">RAIL</button>
+                    <button id="miningBtn" class="weapon-button">MINE</button>
+                </div>
+                <div class="weapon-display">
+                    <div class="weapon-info">
+                        <div class="weapon-name" id="weaponName">LASER CANNON MK-II</div>
+                        <div class="weapon-stats">
+                            <span>PWR: <span id="weaponPower" class="stat-value">85%</span></span>
+                            <span>HEAT: <span id="weaponHeat" class="stat-value">23%</span></span>
+                        </div>
+                        <div class="weapon-range">RNG: <span id="weaponRange">2.4 AU</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Navigation Panel -->
+        <div class="ui-panel navigation">
+            <div class="panel-header">
+                <div class="panel-title">NAVIGATION</div>
+                <div class="panel-indicator active"></div>
+            </div>
+            <div class="panel-content">
+                <div class="radar-display">
+                    <div class="radar">
+                        <div class="radar-sweep"></div>
+                        <div class="radar-center"></div>
+                        <div class="radar-grid">
+                            <div class="radar-ring"></div>
+                            <div class="radar-ring"></div>
+                            <div class="radar-ring"></div>
+                        </div>
+                        <div id="radarContacts" class="radar-contacts"></div>
+                    </div>
+                </div>
+                <div class="nav-controls">
+                    <button id="zoomInBtn" class="nav-button">Z+</button>
+                    <button id="zoomOutBtn" class="nav-button">Z-</button>
+                    <button id="galaxyMapBtn" class="nav-button">GAL</button>
+                    <button id="systemMapBtn" class="nav-button active">SYS</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inventory Screen -->
+    <div id="inventoryScreen" class="inventory-screen hidden">
+        <div class="inventory-panel">
+            <div class="inventory-header">
+                <h2>CARGO MANIFEST</h2>
+                <button id="closeInventoryBtn" class="close-button">×</button>
+            </div>
+            <div class="inventory-content">
+                <div class="inventory-categories">
+                    <button class="category-button active" data-category="all">ALL</button>
+                    <button class="category-button" data-category="elements">ELEMENTS</button>
+                    <button class="category-button" data-category="resources">RESOURCES</button>
+                    <button class="category-button" data-category="components">COMPONENTS</button>
+                    <button class="category-button" data-category="artifacts">ARTIFACTS</button>
+                </div>
+                <div id="inventoryGrid" class="inventory-grid">
+                    <!-- Dynamic inventory items will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Scripts -->
+    <script type="module" src="src/main.ts"></script>
+</body>
+</html>

@@ -1,0 +1,399 @@
+// Input Management System with Touch Support
+import { Game } from './Game';
+
+export interface TouchControls {
+    joystick: {
+        active: boolean;
+        x: number;
+        y: number;
+        center: { x: number; y: number };
+    };
+    buttons: {
+        [key: string]: boolean;
+    };
+}
+
+export class InputManager {
+    private keys: { [key: string]: boolean } = {};
+    private previousKeys: { [key: string]: boolean } = {};
+    private mouse: {
+        x: number;
+        y: number;
+        pressed: boolean;
+        previousPressed: boolean;
+    } = {
+        x: 0,
+        y: 0,
+        pressed: false,
+        previousPressed: false
+    };
+    
+    private touch: TouchControls = {
+        joystick: {
+            active: false,
+            x: 0,
+            y: 0,
+            center: { x: 0, y: 0 }
+        },
+        buttons: {}
+    };
+    
+    private isMobileDevice: boolean = false;
+    private joystickElement: HTMLElement | null = null;
+    private joystickKnob: HTMLElement | null = null;
+    private actionButtons: NodeListOf<Element> | null = null;
+    
+    constructor(private game: Game) {
+        this.isMobileDevice = this.detectMobile();
+        this.setupEventListeners();
+        this.setupTouchControls();
+        
+        console.log(`🎮 Input Manager initialized (Mobile: ${this.isMobileDevice})`);
+    }
+    
+    private detectMobile(): boolean {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+               ('ontouchstart' in window) || 
+               (navigator.maxTouchPoints > 0) ||
+               window.innerWidth < 768;
+    }
+    
+    private setupEventListeners(): void {
+        // Keyboard events
+        document.addEventListener('keydown', (e) => this.onKeyDown(e));
+        document.addEventListener('keyup', (e) => this.onKeyUp(e));
+        
+        // Mouse events
+        document.addEventListener('mousemove', (e) => this.onMouseMove(e));
+        document.addEventListener('mousedown', (e) => this.onMouseDown(e));
+        document.addEventListener('mouseup', (e) => this.onMouseUp(e));
+        
+        // Prevent context menu on right click
+        document.addEventListener('contextmenu', (e) => e.preventDefault());
+        
+        // Focus handling
+        window.addEventListener('blur', () => this.onWindowBlur());
+        window.addEventListener('focus', () => this.onWindowFocus());
+    }
+    
+    private setupTouchControls(): void {
+        if (!this.isMobileDevice) return;
+        
+        // Show mobile controls
+        const mobileControls = document.getElementById('mobileControls');
+        if (mobileControls) {
+            mobileControls.classList.remove('hidden');
+        }
+        
+        // Setup virtual joystick
+        this.joystickElement = document.getElementById('virtualJoystick');
+        this.joystickKnob = document.getElementById('joystickKnob');
+        
+        if (this.joystickElement && this.joystickKnob) {
+            this.setupVirtualJoystick();
+        }
+        
+        // Setup action buttons
+        this.actionButtons = document.querySelectorAll('.action-button');
+        this.setupActionButtons();
+    }
+    
+    private setupVirtualJoystick(): void {
+        if (!this.joystickElement || !this.joystickKnob) return;
+        
+        let joystickActive = false;
+        const maxDistance = 40; // Half of joystick base radius
+        
+        const updateJoystickCenter = () => {
+            if (!this.joystickElement) return;
+            const rect = this.joystickElement.getBoundingClientRect();
+            this.touch.joystick.center.x = rect.left + rect.width / 2;
+            this.touch.joystick.center.y = rect.top + rect.height / 2;
+        };
+        
+        // Update center position
+        updateJoystickCenter();
+        window.addEventListener('resize', updateJoystickCenter);
+        window.addEventListener('scroll', updateJoystickCenter);
+        
+        // Touch start
+        this.joystickElement.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            joystickActive = true;
+            this.touch.joystick.active = true;
+            updateJoystickCenter();
+        });
+        
+        // Touch move
+        this.joystickElement.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!joystickActive || !this.joystickKnob) return;
+            
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - this.touch.joystick.center.x;
+            const deltaY = touch.clientY - this.touch.joystick.center.y;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            
+            if (distance <= maxDistance) {
+                this.touch.joystick.x = deltaX / maxDistance;
+                this.touch.joystick.y = deltaY / maxDistance;
+                this.joystickKnob.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+            } else {
+                const angle = Math.atan2(deltaY, deltaX);
+                const limitedX = Math.cos(angle) * maxDistance;
+                const limitedY = Math.sin(angle) * maxDistance;
+                this.touch.joystick.x = limitedX / maxDistance;
+                this.touch.joystick.y = limitedY / maxDistance;
+                this.joystickKnob.style.transform = `translate(${limitedX}px, ${limitedY}px)`;
+            }
+        });
+        
+        // Touch end
+        const resetJoystick = () => {
+            joystickActive = false;
+            this.touch.joystick.active = false;
+            this.touch.joystick.x = 0;
+            this.touch.joystick.y = 0;
+            if (this.joystickKnob) {
+                this.joystickKnob.style.transform = 'translate(0px, 0px)';
+            }
+        };
+        
+        this.joystickElement.addEventListener('touchend', resetJoystick);
+        this.joystickElement.addEventListener('touchcancel', resetJoystick);
+    }
+    
+    private setupActionButtons(): void {
+        if (!this.actionButtons) return;
+        
+        this.actionButtons.forEach(button => {
+            const buttonId = button.id;
+            
+            // Touch events
+            button.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.touch.buttons[buttonId] = true;
+                button.classList.add('active');
+            });
+            
+            button.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                this.touch.buttons[buttonId] = false;
+                button.classList.remove('active');
+            });
+            
+            button.addEventListener('touchcancel', (e) => {
+                e.preventDefault();
+                this.touch.buttons[buttonId] = false;
+                button.classList.remove('active');
+            });
+            
+            // Mouse events for testing on desktop
+            button.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                this.touch.buttons[buttonId] = true;
+                button.classList.add('active');
+            });
+            
+            button.addEventListener('mouseup', (e) => {
+                e.preventDefault();
+                this.touch.buttons[buttonId] = false;
+                button.classList.remove('active');
+            });
+        });
+    }
+    
+    private onKeyDown(event: KeyboardEvent): void {
+        const key = event.key.toLowerCase();
+        this.keys[key] = true;
+        
+        // Prevent default behavior for game keys
+        if (this.isGameKey(key)) {
+            event.preventDefault();
+        }
+    }
+    
+    private onKeyUp(event: KeyboardEvent): void {
+        const key = event.key.toLowerCase();
+        this.keys[key] = false;
+        
+        if (this.isGameKey(key)) {
+            event.preventDefault();
+        }
+    }
+    
+    private onMouseMove(event: MouseEvent): void {
+        const canvas = this.game.getCanvas();
+        const rect = canvas.getBoundingClientRect();
+        this.mouse.x = event.clientX - rect.left;
+        this.mouse.y = event.clientY - rect.top;
+    }
+    
+    private onMouseDown(event: MouseEvent): void {
+        this.mouse.pressed = true;
+        event.preventDefault();
+    }
+    
+    private onMouseUp(event: MouseEvent): void {
+        this.mouse.pressed = false;
+        event.preventDefault();
+    }
+    
+    private onWindowBlur(): void {
+        // Clear all input states when window loses focus
+        this.keys = {};
+        this.mouse.pressed = false;
+        this.touch.buttons = {};
+        this.touch.joystick.active = false;
+    }
+    
+    private onWindowFocus(): void {
+        // Reset input states when window gains focus
+        this.keys = {};
+    }
+    
+    private isGameKey(key: string): boolean {
+        const gameKeys = [
+            'w', 'a', 's', 'd',
+            'arrowup', 'arrowdown', 'arrowleft', 'arrowright',
+            ' ', 'space',
+            'shift', 'control', 'alt',
+            'escape', 'enter',
+            'i', 'm', 'tab'
+        ];
+        return gameKeys.includes(key);
+    }
+    
+    public update(deltaTime: number): void {
+        // Store previous input states
+        this.previousKeys = { ...this.keys };
+        this.mouse.previousPressed = this.mouse.pressed;
+    }
+    
+    // Key state queries
+    public isKeyPressed(key: string): boolean {
+        return this.keys[key.toLowerCase()] || false;
+    }
+    
+    public isKeyJustPressed(key: string): boolean {
+        const keyLower = key.toLowerCase();
+        return this.keys[keyLower] && !this.previousKeys[keyLower];
+    }
+    
+    public isKeyJustReleased(key: string): boolean {
+        const keyLower = key.toLowerCase();
+        return !this.keys[keyLower] && this.previousKeys[keyLower];
+    }
+    
+    // Mouse state queries
+    public getMousePosition(): { x: number; y: number } {
+        return { x: this.mouse.x, y: this.mouse.y };
+    }
+    
+    public isMousePressed(): boolean {
+        return this.mouse.pressed;
+    }
+    
+    public isMouseJustPressed(): boolean {
+        return this.mouse.pressed && !this.mouse.previousPressed;
+    }
+    
+    public isMouseJustReleased(): boolean {
+        return !this.mouse.pressed && this.mouse.previousPressed;
+    }
+    
+    // Game-specific input queries
+    public getThrustInput(): boolean {
+        if (this.isMobileDevice) {
+            return this.touch.buttons['thrustBtn'] || this.touch.joystick.y < -0.3;
+        }
+        return this.isKeyPressed('w') || this.isKeyPressed('arrowup');
+    }
+    
+    public getBrakeInput(): boolean {
+        if (this.isMobileDevice) {
+            return this.touch.joystick.y > 0.3;
+        }
+        return this.isKeyPressed('s') || this.isKeyPressed('arrowdown');
+    }
+    
+    public getRotationInput(): number {
+        if (this.isMobileDevice && this.touch.joystick.active) {
+            return this.touch.joystick.x;
+        }
+        
+        let rotation = 0;
+        if (this.isKeyPressed('a') || this.isKeyPressed('arrowleft')) rotation -= 1;
+        if (this.isKeyPressed('d') || this.isKeyPressed('arrowright')) rotation += 1;
+        return rotation;
+    }
+    
+    public getFireInput(): boolean {
+        if (this.isMobileDevice) {
+            return this.touch.buttons['fireBtn'];
+        }
+        return this.isKeyPressed(' ') || this.isKeyPressed('space') || this.isMousePressed();
+    }
+    
+    public getShieldInput(): boolean {
+        if (this.isMobileDevice) {
+            return this.touch.buttons['shieldBtn2'];
+        }
+        return this.isKeyPressed('shift');
+    }
+    
+    public getWarpInput(): boolean {
+        if (this.isMobileDevice) {
+            return this.touch.buttons['warpBtn2'];
+        }
+        return this.isKeyPressed('control');
+    }
+    
+    // Utility methods
+    public isMobile(): boolean {
+        return this.isMobileDevice;
+    }
+    
+    public getJoystickInput(): { x: number; y: number } {
+        return {
+            x: this.touch.joystick.x,
+            y: this.touch.joystick.y
+        };
+    }
+    
+    public vibrate(pattern: number | number[]): void {
+        if ('vibrate' in navigator && this.isMobileDevice) {
+            navigator.vibrate(pattern);
+        }
+    }
+    
+    // Debug methods
+    public getDebugInfo(): object {
+        return {
+            'Mobile Mode': this.isMobileDevice,
+            'Active Keys': Object.keys(this.keys).filter(key => this.keys[key]),
+            'Mouse Position': `${this.mouse.x}, ${this.mouse.y}`,
+            'Mouse Pressed': this.mouse.pressed,
+            'Joystick Active': this.touch.joystick.active,
+            'Joystick Position': `${this.touch.joystick.x.toFixed(2)}, ${this.touch.joystick.y.toFixed(2)}`,
+            'Touch Buttons': Object.keys(this.touch.buttons).filter(key => this.touch.buttons[key])
+        };
+    }
+    
+    public logInputState(): void {
+        console.log('🎮 Input State:', this.getDebugInfo());
+    }
+    
+    // Cleanup
+    public destroy(): void {
+        // Remove event listeners
+        document.removeEventListener('keydown', this.onKeyDown);
+        document.removeEventListener('keyup', this.onKeyUp);
+        document.removeEventListener('mousemove', this.onMouseMove);
+        document.removeEventListener('mousedown', this.onMouseDown);
+        document.removeEventListener('mouseup', this.onMouseUp);
+        document.removeEventListener('contextmenu', (e) => e.preventDefault());
+        
+        console.log('🗑️ Input Manager destroyed');
+    }
+}

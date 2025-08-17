@@ -1,0 +1,340 @@
+// Game Configuration System
+export interface GameConfigOptions {
+    galaxySize: string;
+    economicComplexity: string;
+    combatDifficulty: string;
+    resourceScarcity: string;
+}
+
+export interface GalaxyConfig {
+    systemCount: number;
+    spiralArms: number;
+    coreRadius: number;
+    armSpread: number;
+    starDensity: number;
+}
+
+export interface EconomicConfig {
+    tradeRouteComplexity: number;
+    marketVolatility: number;
+    supplyDemandFactor: number;
+    blackMarketPresence: number;
+}
+
+export interface CombatConfig {
+    enemyAgressiveness: number;
+    weaponDamageMultiplier: number;
+    shieldStrengthMultiplier: number;
+    aiIntelligence: number;
+}
+
+export interface ResourceConfig {
+    resourceAbundance: number;
+    fuelConsumptionRate: number;
+    repairCostMultiplier: number;
+    rareMaterialChance: number;
+}
+
+export class GameConfig {
+    // Configuration categories
+    public galaxy: GalaxyConfig;
+    public economy: EconomicConfig;
+    public combat: CombatConfig;
+    public resources: ResourceConfig;
+    
+    // Player starting configuration
+    public playerStartingCredits: number = 1000;
+    public playerStartingFuel: number = 100;
+    public playerStartingPosition: { x: number; y: number } = { x: 0, y: 0 };
+    
+    // Game balance settings
+    public warpDriveConsumption: number = 10; // fuel per AU
+    public shieldRegenRate: number = 2; // % per second
+    public hullRepairRate: number = 0.5; // % per second with nanobots
+    public reactorEfficiency: number = 1.0; // energy generation multiplier
+    
+    // Procedural generation seeds
+    public galaxySeed: number;
+    public economySeed: number;
+    public encounterSeed: number;
+    
+    constructor(options: GameConfigOptions) {
+        // Generate random seeds for procedural content
+        this.galaxySeed = Math.floor(Math.random() * 1000000);
+        this.economySeed = Math.floor(Math.random() * 1000000);
+        this.encounterSeed = Math.floor(Math.random() * 1000000);
+        
+        // Configure galaxy based on size selection
+        this.galaxy = this.createGalaxyConfig(options.galaxySize);
+        
+        // Configure economy based on complexity selection
+        this.economy = this.createEconomicConfig(options.economicComplexity);
+        
+        // Configure combat based on difficulty selection
+        this.combat = this.createCombatConfig(options.combatDifficulty);
+        
+        // Configure resources based on scarcity selection
+        this.resources = this.createResourceConfig(options.resourceScarcity);
+        
+        console.log('⚙️ Game configuration created:', {
+            galaxy: this.galaxy,
+            economy: this.economy,
+            combat: this.combat,
+            resources: this.resources,
+            seeds: {
+                galaxy: this.galaxySeed,
+                economy: this.economySeed,
+                encounter: this.encounterSeed
+            }
+        });
+    }
+    
+    private createGalaxyConfig(size: string): GalaxyConfig {
+        switch (size) {
+            case 'small':
+                return {
+                    systemCount: 100,
+                    spiralArms: 2,
+                    coreRadius: 50,
+                    armSpread: 200,
+                    starDensity: 0.3
+                };
+            case 'medium':
+                return {
+                    systemCount: 250,
+                    spiralArms: 3,
+                    coreRadius: 75,
+                    armSpread: 350,
+                    starDensity: 0.4
+                };
+            case 'large':
+                return {
+                    systemCount: 500,
+                    spiralArms: 4,
+                    coreRadius: 100,
+                    armSpread: 500,
+                    starDensity: 0.5
+                };
+            default:
+                throw new Error(`Unknown galaxy size: ${size}`);
+        }
+    }
+    
+    private createEconomicConfig(complexity: string): EconomicConfig {
+        switch (complexity) {
+            case 'simple':
+                return {
+                    tradeRouteComplexity: 0.3,
+                    marketVolatility: 0.2,
+                    supplyDemandFactor: 0.5,
+                    blackMarketPresence: 0.1
+                };
+            case 'balanced':
+                return {
+                    tradeRouteComplexity: 0.6,
+                    marketVolatility: 0.4,
+                    supplyDemandFactor: 0.7,
+                    blackMarketPresence: 0.3
+                };
+            case 'complex':
+                return {
+                    tradeRouteComplexity: 1.0,
+                    marketVolatility: 0.8,
+                    supplyDemandFactor: 1.0,
+                    blackMarketPresence: 0.6
+                };
+            default:
+                throw new Error(`Unknown economic complexity: ${complexity}`);
+        }
+    }
+    
+    private createCombatConfig(difficulty: string): CombatConfig {
+        switch (difficulty) {
+            case 'easy':
+                return {
+                    enemyAgressiveness: 0.5,
+                    weaponDamageMultiplier: 0.7,
+                    shieldStrengthMultiplier: 1.3,
+                    aiIntelligence: 0.4
+                };
+            case 'normal':
+                return {
+                    enemyAgressiveness: 0.7,
+                    weaponDamageMultiplier: 1.0,
+                    shieldStrengthMultiplier: 1.0,
+                    aiIntelligence: 0.6
+                };
+            case 'hard':
+                return {
+                    enemyAgressiveness: 0.9,
+                    weaponDamageMultiplier: 1.3,
+                    shieldStrengthMultiplier: 0.8,
+                    aiIntelligence: 0.8
+                };
+            case 'nightmare':
+                return {
+                    enemyAgressiveness: 1.2,
+                    weaponDamageMultiplier: 1.6,
+                    shieldStrengthMultiplier: 0.6,
+                    aiIntelligence: 1.0
+                };
+            default:
+                throw new Error(`Unknown combat difficulty: ${difficulty}`);
+        }
+    }
+    
+    private createResourceConfig(scarcity: string): ResourceConfig {
+        switch (scarcity) {
+            case 'abundant':
+                return {
+                    resourceAbundance: 1.5,
+                    fuelConsumptionRate: 0.7,
+                    repairCostMultiplier: 0.6,
+                    rareMaterialChance: 0.3
+                };
+            case 'normal':
+                return {
+                    resourceAbundance: 1.0,
+                    fuelConsumptionRate: 1.0,
+                    repairCostMultiplier: 1.0,
+                    rareMaterialChance: 0.15
+                };
+            case 'scarce':
+                return {
+                    resourceAbundance: 0.6,
+                    fuelConsumptionRate: 1.4,
+                    repairCostMultiplier: 1.8,
+                    rareMaterialChance: 0.05
+                };
+            default:
+                throw new Error(`Unknown resource scarcity: ${scarcity}`);
+        }
+    }
+    
+    // Utility methods for game balance calculations
+    public getWarpCost(distance: number): number {
+        return Math.ceil(distance * this.warpDriveConsumption * this.resources.fuelConsumptionRate);
+    }
+    
+    public getThrusterCost(thrustLevel: number, deltaTime: number): number {
+        return thrustLevel * 0.1 * deltaTime * this.resources.fuelConsumptionRate;
+    }
+    
+    public getShieldRegenAmount(deltaTime: number): number {
+        return this.shieldRegenRate * deltaTime * this.combat.shieldStrengthMultiplier;
+    }
+    
+    public getRepairCost(damageAmount: number): number {
+        return Math.ceil(damageAmount * 10 * this.resources.repairCostMultiplier);
+    }
+    
+    public getEnemySpawnChance(systemDanger: number): number {
+        return systemDanger * this.combat.enemyAgressiveness * 0.1;
+    }
+    
+    public getResourceYield(baseYield: number): number {
+        return Math.floor(baseYield * this.resources.resourceAbundance);
+    }
+    
+    public getPriceVolatility(): number {
+        return 0.1 + (this.economy.marketVolatility * 0.4);
+    }
+    
+    // Save/Load configuration
+    public serialize(): string {
+        return JSON.stringify({
+            galaxy: this.galaxy,
+            economy: this.economy,
+            combat: this.combat,
+            resources: this.resources,
+            playerStartingCredits: this.playerStartingCredits,
+            playerStartingFuel: this.playerStartingFuel,
+            playerStartingPosition: this.playerStartingPosition,
+            warpDriveConsumption: this.warpDriveConsumption,
+            shieldRegenRate: this.shieldRegenRate,
+            hullRepairRate: this.hullRepairRate,
+            reactorEfficiency: this.reactorEfficiency,
+            galaxySeed: this.galaxySeed,
+            economySeed: this.economySeed,
+            encounterSeed: this.encounterSeed
+        });
+    }
+    
+    public static deserialize(data: string): GameConfig {
+        const parsed = JSON.parse(data);
+        const config = Object.create(GameConfig.prototype);
+        return Object.assign(config, parsed);
+    }
+    
+    // Validation methods
+    public validate(): boolean {
+        try {
+            // Validate galaxy config
+            if (this.galaxy.systemCount < 10 || this.galaxy.systemCount > 1000) {
+                throw new Error('Invalid galaxy system count');
+            }
+            
+            // Validate economy config
+            if (this.economy.tradeRouteComplexity < 0 || this.economy.tradeRouteComplexity > 1) {
+                throw new Error('Invalid trade route complexity');
+            }
+            
+            // Validate combat config
+            if (this.combat.weaponDamageMultiplier < 0.1 || this.combat.weaponDamageMultiplier > 5.0) {
+                throw new Error('Invalid weapon damage multiplier');
+            }
+            
+            // Validate resource config
+            if (this.resources.resourceAbundance < 0.1 || this.resources.resourceAbundance > 3.0) {
+                throw new Error('Invalid resource abundance');
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('❌ Game configuration validation failed:', error);
+            return false;
+        }
+    }
+    
+    // Debug methods
+    public getDebugInfo(): object {
+        return {
+            'Galaxy Systems': this.galaxy.systemCount,
+            'Star Density': this.galaxy.starDensity,
+            'Economic Complexity': this.economy.tradeRouteComplexity,
+            'Combat Difficulty': this.combat.weaponDamageMultiplier,
+            'Resource Scarcity': 1 / this.resources.resourceAbundance,
+            'Galaxy Seed': this.galaxySeed,
+            'Economy Seed': this.economySeed,
+            'Encounter Seed': this.encounterSeed
+        };
+    }
+}
+
+// Preset configurations for quick setup
+export const PRESET_CONFIGS = {
+    EXPLORER: {
+        galaxySize: 'large',
+        economicComplexity: 'simple',
+        combatDifficulty: 'easy',
+        resourceScarcity: 'abundant'
+    },
+    TRADER: {
+        galaxySize: 'medium',
+        economicComplexity: 'complex',
+        combatDifficulty: 'normal',
+        resourceScarcity: 'normal'
+    },
+    WARRIOR: {
+        galaxySize: 'small',
+        economicComplexity: 'balanced',
+        combatDifficulty: 'hard',
+        resourceScarcity: 'normal'
+    },
+    HARDCORE: {
+        galaxySize: 'large',
+        economicComplexity: 'complex',
+        combatDifficulty: 'nightmare',
+        resourceScarcity: 'scarce'
+    }
+} as const;

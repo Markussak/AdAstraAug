@@ -1,0 +1,851 @@
+/**
+ * UI System for Space Explorer 16-Bit
+ * Handles all user interface elements and interactions
+ */
+
+import { Spacecraft } from './basic_classes';
+import { WeaponSystem, ShieldSystem, WarpDrive } from './spacecraft_systems';
+
+export interface InventoryItem {
+    id: string;
+    name: string;
+    category: 'element' | 'resource' | 'component' | 'consumable' | 'artifact';
+    quantity: number;
+    description: string;
+    value: number;
+    rarity: 'common' | 'uncommon' | 'rare' | 'legendary';
+    weight: number;
+}
+
+export interface GameSettings {
+    galaxySize: number;
+    economicComplexity: number;
+    combatDifficulty: number;
+    researchSpeed: number;
+    startingResources: number;
+    shipType: 'explorer' | 'trader' | 'fighter' | 'miner';
+    playerName: string;
+    enableTutorial: boolean;
+}
+
+export class UISystem {
+    private static instance: UISystem;
+    private currentScreen: string = 'loading';
+    private inventory: InventoryItem[] = [];
+    private gameSettings: GameSettings;
+    private statusUpdateInterval: number = 0;
+
+    // Periodic Table Elements for inventory
+    private static readonly PERIODIC_ELEMENTS = [
+        { symbol: 'H', name: 'Hydrogen', category: 'element', value: 1 },
+        { symbol: 'He', name: 'Helium', category: 'element', value: 5 },
+        { symbol: 'Li', name: 'Lithium', category: 'element', value: 25 },
+        { symbol: 'C', name: 'Carbon', category: 'element', value: 10 },
+        { symbol: 'O', name: 'Oxygen', category: 'element', value: 8 },
+        { symbol: 'Fe', name: 'Iron', category: 'element', value: 15 },
+        { symbol: 'Au', name: 'Gold', category: 'element', value: 500 },
+        { symbol: 'Pt', name: 'Platinum', category: 'element', value: 800 },
+        { symbol: 'U', name: 'Uranium', category: 'element', value: 1200 },
+        { symbol: 'Pu', name: 'Plutonium', category: 'element', value: 2500 }
+    ];
+
+    static getInstance(): UISystem {
+        if (!this.instance) {
+            this.instance = new UISystem();
+        }
+        return this.instance;
+    }
+
+    constructor() {
+        this.gameSettings = this.getDefaultSettings();
+        this.initializeInventory();
+        this.setupEventListeners();
+    }
+
+    private getDefaultSettings(): GameSettings {
+        return {
+            galaxySize: 300,
+            economicComplexity: 50,
+            combatDifficulty: 50,
+            researchSpeed: 100,
+            startingResources: 100,
+            shipType: 'explorer',
+            playerName: 'Commander',
+            enableTutorial: true
+        };
+    }
+
+    private initializeInventory(): void {
+        // Add starting inventory items
+        this.inventory = [
+            {
+                id: 'fuel_cell',
+                name: 'Fuel Cell',
+                category: 'consumable',
+                quantity: 10,
+                description: 'Standard fusion fuel cell for spacecraft',
+                value: 50,
+                rarity: 'common',
+                weight: 5
+            },
+            {
+                id: 'repair_kit',
+                name: 'Hull Repair Kit',
+                category: 'consumable',
+                quantity: 3,
+                description: 'Emergency hull repair materials',
+                value: 150,
+                rarity: 'uncommon',
+                weight: 10
+            },
+            {
+                id: 'ration_pack',
+                name: 'Emergency Rations',
+                category: 'consumable',
+                quantity: 20,
+                description: 'Nutrient-dense survival food',
+                value: 25,
+                rarity: 'common',
+                weight: 1
+            }
+        ];
+
+        // Add some periodic elements
+        UISystem.PERIODIC_ELEMENTS.forEach(element => {
+            if (Math.random() > 0.7) { // 30% chance for each element
+                this.inventory.push({
+                    id: element.symbol.toLowerCase(),
+                    name: element.name,
+                    category: element.category as any,
+                    quantity: Math.floor(Math.random() * 10) + 1,
+                    description: `${element.name} element for crafting and trading`,
+                    value: element.value,
+                    rarity: element.value > 500 ? 'rare' : element.value > 100 ? 'uncommon' : 'common',
+                    weight: 1
+                });
+            }
+        });
+    }
+
+    private setupEventListeners(): void {
+        // Main Menu Events
+        document.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement;
+            
+            if (target.id === 'newGameBtn') {
+                this.showNewGameSetup();
+            } else if (target.id === 'startGameBtn') {
+                this.startNewGame();
+            } else if (target.id === 'inventoryBtn') {
+                this.toggleInventoryScreen();
+            } else if (target.id === 'codexBtn') {
+                this.toggleCodexScreen();
+            } else if (target.id === 'researchBtn') {
+                this.toggleResearchScreen();
+            } else if (target.id === 'galaxyMapBtn') {
+                this.toggleGalaxyMap();
+            }
+        });
+
+        // Settings change events
+        document.addEventListener('input', (e) => {
+            const target = e.target as HTMLInputElement;
+            this.updateGameSetting(target.id, target.value);
+        });
+    }
+
+    showMainMenu(): void {
+        this.currentScreen = 'menu';
+        this.hideAllScreens();
+        
+        const menuHTML = `
+            <div id="mainMenu" class="screen main-menu">
+                <div class="menu-container">
+                    <h1 class="game-title">SPACE EXPLORER 16-BIT</h1>
+                    <div class="menu-buttons">
+                        <button id="newGameBtn" class="menu-button">NEW GAME</button>
+                        <button id="loadGameBtn" class="menu-button">LOAD GAME</button>
+                        <button id="settingsBtn" class="menu-button">SETTINGS</button>
+                        <button id="exitBtn" class="menu-button">EXIT</button>
+                    </div>
+                    <div class="version-info">
+                        <div>VERSION 1.0.0</div>
+                        <div>PROCEDURAL GALAXY ENGINE</div>
+                        <div>REALISTIC PHYSICS SIMULATION</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', menuHTML);
+    }
+
+    showNewGameSetup(): void {
+        this.currentScreen = 'setup';
+        this.hideAllScreens();
+        
+        const setupHTML = `
+            <div id="gameSetup" class="screen game-setup">
+                <div class="setup-container">
+                    <h2 class="setup-title">NEW GAME CONFIGURATION</h2>
+                    
+                    <div class="setup-sections">
+                        <!-- Player Information -->
+                        <div class="setup-section">
+                            <h3>COMMANDER PROFILE</h3>
+                            <div class="input-group">
+                                <label>Name:</label>
+                                <input type="text" id="playerName" value="${this.gameSettings.playerName}" maxlength="20">
+                            </div>
+                            <div class="input-group">
+                                <label>Starting Ship Type:</label>
+                                <select id="shipType">
+                                    <option value="explorer" ${this.gameSettings.shipType === 'explorer' ? 'selected' : ''}>EXPLORER - Balanced exploration vessel</option>
+                                    <option value="trader" ${this.gameSettings.shipType === 'trader' ? 'selected' : ''}>TRADER - Large cargo capacity</option>
+                                    <option value="fighter" ${this.gameSettings.shipType === 'fighter' ? 'selected' : ''}>FIGHTER - Combat optimized</option>
+                                    <option value="miner" ${this.gameSettings.shipType === 'miner' ? 'selected' : ''}>MINER - Resource extraction</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Galaxy Configuration -->
+                        <div class="setup-section">
+                            <h3>GALAXY PARAMETERS</h3>
+                            <div class="slider-group">
+                                <label>Galaxy Size: <span id="galaxySizeValue">${this.gameSettings.galaxySize}</span> systems</label>
+                                <input type="range" id="galaxySize" min="100" max="500" value="${this.gameSettings.galaxySize}">
+                            </div>
+                            <div class="slider-group">
+                                <label>Economic Complexity: <span id="economicComplexityValue">${this.gameSettings.economicComplexity}%</span></label>
+                                <input type="range" id="economicComplexity" min="0" max="100" value="${this.gameSettings.economicComplexity}">
+                            </div>
+                        </div>
+
+                        <!-- Difficulty Settings -->
+                        <div class="setup-section">
+                            <h3>DIFFICULTY SETTINGS</h3>
+                            <div class="slider-group">
+                                <label>Combat Difficulty: <span id="combatDifficultyValue">${this.gameSettings.combatDifficulty}%</span></label>
+                                <input type="range" id="combatDifficulty" min="0" max="100" value="${this.gameSettings.combatDifficulty}">
+                            </div>
+                            <div class="slider-group">
+                                <label>Research Speed: <span id="researchSpeedValue">${this.gameSettings.researchSpeed}%</span></label>
+                                <input type="range" id="researchSpeed" min="50" max="200" value="${this.gameSettings.researchSpeed}">
+                            </div>
+                            <div class="slider-group">
+                                <label>Starting Resources: <span id="startingResourcesValue">${this.gameSettings.startingResources}%</span></label>
+                                <input type="range" id="startingResources" min="50" max="200" value="${this.gameSettings.startingResources}">
+                            </div>
+                        </div>
+
+                        <!-- Tutorial Options -->
+                        <div class="setup-section">
+                            <h3>TUTORIAL & ASSISTANCE</h3>
+                            <div class="checkbox-group">
+                                <label>
+                                    <input type="checkbox" id="enableTutorial" ${this.gameSettings.enableTutorial ? 'checked' : ''}>
+                                    Enable Tutorial and Hints
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="setup-buttons">
+                        <button id="backToMenuBtn" class="setup-button secondary">BACK</button>
+                        <button id="startGameBtn" class="setup-button primary">START GAME</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', setupHTML);
+        this.setupSliderListeners();
+    }
+
+    private setupSliderListeners(): void {
+        const sliders = ['galaxySize', 'economicComplexity', 'combatDifficulty', 'researchSpeed', 'startingResources'];
+        
+        sliders.forEach(sliderId => {
+            const slider = document.getElementById(sliderId) as HTMLInputElement;
+            const valueDisplay = document.getElementById(sliderId + 'Value');
+            
+            if (slider && valueDisplay) {
+                slider.addEventListener('input', () => {
+                    const value = slider.value;
+                    valueDisplay.textContent = sliderId === 'galaxySize' ? `${value} systems` : `${value}%`;
+                    this.updateGameSetting(sliderId, value);
+                });
+            }
+        });
+    }
+
+    private updateGameSetting(settingId: string, value: string): void {
+        switch (settingId) {
+            case 'playerName':
+                this.gameSettings.playerName = value;
+                break;
+            case 'shipType':
+                this.gameSettings.shipType = value as any;
+                break;
+            case 'galaxySize':
+                this.gameSettings.galaxySize = parseInt(value);
+                break;
+            case 'economicComplexity':
+                this.gameSettings.economicComplexity = parseInt(value);
+                break;
+            case 'combatDifficulty':
+                this.gameSettings.combatDifficulty = parseInt(value);
+                break;
+            case 'researchSpeed':
+                this.gameSettings.researchSpeed = parseInt(value);
+                break;
+            case 'startingResources':
+                this.gameSettings.startingResources = parseInt(value);
+                break;
+            case 'enableTutorial':
+                this.gameSettings.enableTutorial = (value === 'true' || (document.getElementById('enableTutorial') as HTMLInputElement)?.checked);
+                break;
+        }
+    }
+
+    startNewGame(): void {
+        this.hideAllScreens();
+        // Initialize game with current settings
+        console.log('Starting new game with settings:', this.gameSettings);
+        
+        // Hide loading screen and start game
+        const loadingScreen = document.getElementById('loadingScreen');
+        if (loadingScreen) {
+            loadingScreen.classList.add('hidden');
+        }
+        
+        // Trigger game initialization
+        if (window.game && window.game.stateManager) {
+            window.game.stateManager.setState('playing');
+        }
+    }
+
+    toggleInventoryScreen(): void {
+        const existingInventory = document.getElementById('inventoryScreen');
+        if (existingInventory) {
+            existingInventory.remove();
+            return;
+        }
+
+        const inventoryHTML = this.generateInventoryHTML();
+        document.body.insertAdjacentHTML('beforeend', inventoryHTML);
+    }
+
+    private generateInventoryHTML(): string {
+        const categories = this.groupInventoryByCategory();
+        const totalWeight = this.inventory.reduce((sum, item) => sum + (item.weight * item.quantity), 0);
+        const totalValue = this.inventory.reduce((sum, item) => sum + (item.value * item.quantity), 0);
+
+        return `
+            <div id="inventoryScreen" class="screen inventory-screen">
+                <div class="inventory-container">
+                    <div class="inventory-header">
+                        <h2>SHIP INVENTORY</h2>
+                        <button id="closeInventoryBtn" class="close-button">✕</button>
+                    </div>
+                    
+                    <div class="inventory-stats">
+                        <div class="stat">Total Weight: ${totalWeight.toFixed(1)} kg</div>
+                        <div class="stat">Total Value: ${totalValue} credits</div>
+                        <div class="stat">Items: ${this.inventory.length}</div>
+                    </div>
+
+                    <div class="inventory-content">
+                        ${Object.entries(categories).map(([category, items]) => `
+                            <div class="inventory-category">
+                                <h3 class="category-title">${category.toUpperCase()}</h3>
+                                <div class="items-grid">
+                                    ${(items as InventoryItem[]).map(item => `
+                                        <div class="inventory-item ${item.rarity}">
+                                            <div class="item-icon">${this.getItemIcon(item)}</div>
+                                            <div class="item-info">
+                                                <div class="item-name">${item.name}</div>
+                                                <div class="item-quantity">x${item.quantity}</div>
+                                                <div class="item-value">${item.value}c each</div>
+                                            </div>
+                                            <div class="item-description">${item.description}</div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    private groupInventoryByCategory(): { [key: string]: InventoryItem[] } {
+        const categories: { [key: string]: InventoryItem[] } = {};
+        
+        this.inventory.forEach(item => {
+            if (!categories[item.category]) {
+                categories[item.category] = [];
+            }
+            categories[item.category].push(item);
+        });
+
+        return categories;
+    }
+
+    private getItemIcon(item: InventoryItem): string {
+        const iconMap: { [key: string]: string } = {
+            'element': '⚛',
+            'resource': '⬢',
+            'component': '⚙',
+            'consumable': '📦',
+            'artifact': '✦'
+        };
+        return iconMap[item.category] || '?';
+    }
+
+    toggleCodexScreen(): void {
+        const existingCodex = document.getElementById('codexScreen');
+        if (existingCodex) {
+            existingCodex.remove();
+            return;
+        }
+
+        const codexHTML = `
+            <div id="codexScreen" class="screen codex-screen">
+                <div class="codex-container">
+                    <div class="codex-header">
+                        <h2>GALACTIC CODEX</h2>
+                        <button id="closeCodexBtn" class="close-button">✕</button>
+                    </div>
+                    
+                    <div class="codex-content">
+                        <div class="codex-sidebar">
+                            <button class="codex-tab active" data-tab="systems">Star Systems</button>
+                            <button class="codex-tab" data-tab="species">Alien Species</button>
+                            <button class="codex-tab" data-tab="technology">Technology</button>
+                            <button class="codex-tab" data-tab="economy">Economy</button>
+                        </div>
+                        
+                        <div class="codex-main">
+                            <div id="systemsTab" class="codex-tab-content active">
+                                <h3>Discovered Star Systems</h3>
+                                <div class="systems-list">
+                                    <div class="system-entry">
+                                        <h4>Sol System</h4>
+                                        <p>Home system. Contains 4 planets and 1 asteroid belt.</p>
+                                        <div class="system-stats">
+                                            <span>Threat Level: Low</span>
+                                            <span>Resources: High</span>
+                                            <span>Population: 8.2B</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="speciesTab" class="codex-tab-content">
+                                <h3>Known Alien Species</h3>
+                                <p class="no-data">No alien species encountered yet.</p>
+                            </div>
+                            
+                            <div id="technologyTab" class="codex-tab-content">
+                                <h3>Technology Database</h3>
+                                <div class="tech-list">
+                                    <div class="tech-entry">
+                                        <h4>Warp Drive Technology</h4>
+                                        <p>Allows faster-than-light travel by manipulating space-time.</p>
+                                        <div class="tech-requirements">
+                                            <span>Requires: Exotic Matter, Advanced Physics</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="economyTab" class="codex-tab-content">
+                                <h3>Economic Information</h3>
+                                <div class="economy-data">
+                                    <h4>Trade Routes</h4>
+                                    <p>Active trade routes: 0</p>
+                                    <h4>Market Prices</h4>
+                                    <div class="price-list">
+                                        <div class="price-entry">Fuel: 100 credits/unit</div>
+                                        <div class="price-entry">Food: 50 credits/unit</div>
+                                        <div class="price-entry">Metals: 75 credits/unit</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', codexHTML);
+        this.setupCodexTabs();
+    }
+
+    private setupCodexTabs(): void {
+        const tabs = document.querySelectorAll('.codex-tab');
+        const tabContents = document.querySelectorAll('.codex-tab-content');
+        
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabId = (tab as HTMLElement).dataset.tab;
+                
+                // Remove active class from all tabs and content
+                tabs.forEach(t => t.classList.remove('active'));
+                tabContents.forEach(content => content.classList.remove('active'));
+                
+                // Add active class to clicked tab and corresponding content
+                tab.classList.add('active');
+                const targetContent = document.getElementById(`${tabId}Tab`);
+                if (targetContent) {
+                    targetContent.classList.add('active');
+                }
+            });
+        });
+    }
+
+    toggleResearchScreen(): void {
+        const existingResearch = document.getElementById('researchScreen');
+        if (existingResearch) {
+            existingResearch.remove();
+            return;
+        }
+
+        const researchHTML = `
+            <div id="researchScreen" class="screen research-screen">
+                <div class="research-container">
+                    <div class="research-header">
+                        <h2>RESEARCH & DEVELOPMENT</h2>
+                        <button id="closeResearchBtn" class="close-button">✕</button>
+                    </div>
+                    
+                    <div class="research-stats">
+                        <div class="stat">Research Points: 150</div>
+                        <div class="stat">Active Projects: 1</div>
+                        <div class="stat">Completed: 3</div>
+                    </div>
+
+                    <div class="research-content">
+                        <div class="research-categories">
+                            <div class="research-category">
+                                <h3>PROPULSION</h3>
+                                <div class="research-tree">
+                                    <div class="research-node completed">
+                                        <h4>Basic Thrusters</h4>
+                                        <p>Standard chemical propulsion system</p>
+                                        <div class="research-cost">Cost: 50 RP</div>
+                                    </div>
+                                    <div class="research-node available">
+                                        <h4>Ion Drive</h4>
+                                        <p>More efficient electric propulsion</p>
+                                        <div class="research-cost">Cost: 100 RP</div>
+                                        <button class="research-button">Research</button>
+                                    </div>
+                                    <div class="research-node locked">
+                                        <h4>Antimatter Drive</h4>
+                                        <p>Extremely powerful propulsion system</p>
+                                        <div class="research-cost">Cost: 500 RP</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="research-category">
+                                <h3>WEAPONS</h3>
+                                <div class="research-tree">
+                                    <div class="research-node completed">
+                                        <h4>Pulse Lasers</h4>
+                                        <p>Basic energy weapon system</p>
+                                        <div class="research-cost">Cost: 75 RP</div>
+                                    </div>
+                                    <div class="research-node available">
+                                        <h4>Plasma Cannon</h4>
+                                        <p>High-damage energy weapon</p>
+                                        <div class="research-cost">Cost: 150 RP</div>
+                                        <button class="research-button">Research</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="research-category">
+                                <h3>DEFENSE</h3>
+                                <div class="research-tree">
+                                    <div class="research-node researching">
+                                        <h4>Advanced Shielding</h4>
+                                        <p>Improved shield efficiency and regeneration</p>
+                                        <div class="research-cost">Cost: 120 RP</div>
+                                        <div class="research-progress">
+                                            <div class="progress-bar">
+                                                <div class="progress-fill" style="width: 60%"></div>
+                                            </div>
+                                            <span>60% Complete</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', researchHTML);
+    }
+
+    toggleGalaxyMap(): void {
+        const existingMap = document.getElementById('galaxyMapScreen');
+        if (existingMap) {
+            existingMap.remove();
+            return;
+        }
+
+        const galaxyMapHTML = `
+            <div id="galaxyMapScreen" class="screen galaxy-map-screen">
+                <div class="galaxy-map-container">
+                    <div class="galaxy-map-header">
+                        <h2>GALACTIC MAP</h2>
+                        <button id="closeGalaxyMapBtn" class="close-button">✕</button>
+                    </div>
+                    
+                    <div class="map-controls">
+                        <button class="map-control-btn active" data-view="galaxy">Galaxy View</button>
+                        <button class="map-control-btn" data-view="local">Local Systems</button>
+                        <button class="map-control-btn" data-view="trade">Trade Routes</button>
+                    </div>
+
+                    <div class="galaxy-map-content">
+                        <canvas id="galaxyMapCanvas" width="800" height="600"></canvas>
+                        
+                        <div class="map-sidebar">
+                            <div class="map-legend">
+                                <h4>Legend</h4>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #ffeb99;"></span>
+                                    <span>G-Class Star</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #d9626b;"></span>
+                                    <span>M-Class Star</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #7077A1;"></span>
+                                    <span>Unexplored</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #ffffff;"></span>
+                                    <span>Current Position</span>
+                                </div>
+                            </div>
+                            
+                            <div class="system-info">
+                                <h4>System Information</h4>
+                                <div id="selectedSystemInfo">
+                                    <p>Select a system to view details</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', galaxyMapHTML);
+        this.initializeGalaxyMap();
+    }
+
+    private initializeGalaxyMap(): void {
+        const canvas = document.getElementById('galaxyMapCanvas') as HTMLCanvasElement;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // Simple galaxy map rendering
+        ctx.fillStyle = '#1a1a2a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw spiral galaxy structure
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+
+        // Draw spiral arms
+        for (let arm = 0; arm < 4; arm++) {
+            ctx.strokeStyle = 'rgba(95, 158, 158, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            for (let i = 0; i < 100; i++) {
+                const angle = (arm * Math.PI / 2) + (i * 0.1);
+                const radius = i * 3;
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.stroke();
+        }
+
+        // Draw star systems
+        for (let i = 0; i < 50; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 50 + Math.random() * 200;
+            const x = centerX + Math.cos(angle) * radius;
+            const y = centerY + Math.sin(angle) * radius;
+
+            ctx.fillStyle = i === 0 ? '#ffffff' : '#ffeb99'; // Current system in white
+            ctx.beginPath();
+            ctx.arc(x, y, i === 0 ? 4 : 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Add system labels for nearby systems
+            if (i < 5) {
+                ctx.fillStyle = '#DCD7C9';
+                ctx.font = '8px monospace';
+                ctx.fillText(`System ${i + 1}`, x + 6, y - 6);
+            }
+        }
+    }
+
+    updateStatusBars(spacecraft: Spacecraft): void {
+        this.statusUpdateInterval += 0.016; // Assume 60fps
+        
+        if (this.statusUpdateInterval >= 0.1) { // Update 10 times per second
+            this.updateStatusBar('hullBar', spacecraft.systems.hull);
+            this.updateStatusBar('shieldBar', spacecraft.systems.shield);
+            this.updateStatusBar('fuelBar', spacecraft.systems.fuel);
+            this.updateStatusBar('energyBar', spacecraft.systems.energy);
+            
+            if (spacecraft.thrust !== undefined) {
+                this.updateStatusBar('thrustBar', spacecraft.thrust * 100);
+            }
+            
+            this.statusUpdateInterval = 0;
+        }
+    }
+
+    private updateStatusBar(barId: string, value: number): void {
+        const bar = document.getElementById(barId);
+        if (!bar) return;
+
+        bar.style.width = Math.max(0, Math.min(100, value)) + '%';
+        
+        // Update color based on value
+        if (value < 25) {
+            bar.style.background = '#d9626b';
+        } else if (value < 50) {
+            bar.style.background = '#ffc27a';
+        } else {
+            bar.style.background = '#6aaf9d';
+        }
+    }
+
+    updateWeaponDisplay(weapons: WeaponSystem[], selectedWeapon: string): void {
+        const weaponInfo = document.querySelector('.weapons-panel .crt-monitor div') as HTMLElement;
+        if (!weaponInfo) return;
+
+        const weapon = weapons.find(w => w.type === selectedWeapon);
+        if (!weapon) return;
+
+        weaponInfo.innerHTML = `
+            <div>${weapon.name.toUpperCase()}</div>
+            <div>DMG: <span style="color: #ffc27a;">${weapon.damage}</span> | RNG: ${weapon.range}m</div>
+            <div>HEAT: ${Math.round(weapon.heat)}% | CD: ${weapon.currentCooldown.toFixed(1)}s</div>
+            ${weapon.ammunition !== undefined ? 
+                `<div>AMMO: ${weapon.ammunition}/${weapon.maxAmmunition}</div>` : ''}
+        `;
+    }
+
+    updateShieldDisplay(shields: ShieldSystem): void {
+        const shieldSections = shields.sections;
+        
+        shieldSections.forEach((section, index) => {
+            const sectionElement = document.getElementById(`section${index + 1}`);
+            if (sectionElement) {
+                const strength = (section.strength / section.maxStrength) * 100;
+                
+                if (strength < 25) {
+                    sectionElement.style.background = 'rgba(217, 98, 107, 0.5)';
+                    sectionElement.style.color = '#d9626b';
+                } else if (strength < 50) {
+                    sectionElement.style.background = 'rgba(255, 194, 122, 0.3)';
+                    sectionElement.style.color = '#ffc27a';
+                } else {
+                    sectionElement.style.background = 'rgba(95, 158, 158, 0.3)';
+                    sectionElement.style.color = '#6aaf9d';
+                }
+            }
+        });
+    }
+
+    updateWarpDisplay(warpDrive: WarpDrive): void {
+        const warpBtn = document.getElementById('warpBtn');
+        if (!warpBtn) return;
+
+        if (warpDrive.active) {
+            warpBtn.classList.add('active');
+            warpBtn.textContent = 'WARP';
+            warpBtn.style.color = '#a73169';
+        } else if (warpDrive.charging) {
+            warpBtn.classList.add('active');
+            warpBtn.textContent = 'CHRG';
+            warpBtn.style.color = '#ffc27a';
+        } else {
+            warpBtn.classList.remove('active');
+            warpBtn.textContent = 'WARP';
+        }
+    }
+
+    addInventoryItem(item: InventoryItem): void {
+        const existing = this.inventory.find(i => i.id === item.id);
+        if (existing) {
+            existing.quantity += item.quantity;
+        } else {
+            this.inventory.push(item);
+        }
+    }
+
+    removeInventoryItem(itemId: string, quantity: number = 1): boolean {
+        const item = this.inventory.find(i => i.id === itemId);
+        if (!item || item.quantity < quantity) return false;
+
+        item.quantity -= quantity;
+        if (item.quantity <= 0) {
+            const index = this.inventory.indexOf(item);
+            this.inventory.splice(index, 1);
+        }
+        return true;
+    }
+
+    private hideAllScreens(): void {
+        const screens = document.querySelectorAll('.screen');
+        screens.forEach(screen => {
+            if (screen.id !== 'loadingScreen') {
+                screen.remove();
+            }
+        });
+    }
+
+    showNotification(message: string, type: 'info' | 'warning' | 'error' = 'info'): void {
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+        
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            notification.remove();
+        }, 3000);
+    }
+
+    getGameSettings(): GameSettings {
+        return { ...this.gameSettings };
+    }
+
+    getCurrentScreen(): string {
+        return this.currentScreen;
+    }
+}

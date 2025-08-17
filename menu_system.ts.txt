@@ -1,0 +1,616 @@
+// Menu System - Main menu, new game setup, and pause menu
+export interface GameSettings {
+    galaxySize: number;
+    difficultyLevel: number;
+    economicComplexity: number;
+    researchSpeed: number;
+    startingResources: number;
+    shipType: string;
+    playerName: string;
+}
+
+export interface MenuButton {
+    id: string;
+    label: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    action: () => void;
+    enabled: boolean;
+    hover: boolean;
+}
+
+export interface MenuSlider {
+    id: string;
+    label: string;
+    x: number;
+    y: number;
+    width: number;
+    value: number;
+    min: number;
+    max: number;
+    step: number;
+    onChange: (value: number) => void;
+}
+
+export class MenuSystem {
+    private canvas: HTMLCanvasElement;
+    private ctx: CanvasRenderingContext2D;
+    private currentMenu: string;
+    private buttons: Map<string, MenuButton[]>;
+    private sliders: Map<string, MenuSlider[]>;
+    private gameSettings: GameSettings;
+    private mousePos: { x: number; y: number };
+    private animationTime: number;
+
+    // Color palette constants
+    private colors = {
+        background: '#201127',
+        backgroundSecondary: '#1b1e34',
+        primaryText: '#E2DFD0',
+        secondaryText: '#A27B5C',
+        accent: '#F97300',
+        buttonNormal: '#3F4F44',
+        buttonHover: '#524C42',
+        buttonActive: '#6aaf9d',
+        warning: '#ec9a6d',
+        danger: '#d9626b'
+    };
+
+    constructor(canvas: HTMLCanvasElement) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d')!;
+        this.ctx.imageSmoothingEnabled = false;
+        this.currentMenu = 'main';
+        this.buttons = new Map();
+        this.sliders = new Map();
+        this.mousePos = { x: 0, y: 0 };
+        this.animationTime = 0;
+        
+        this.gameSettings = {
+            galaxySize: 250,
+            difficultyLevel: 2,
+            economicComplexity: 2,
+            researchSpeed: 1.0,
+            startingResources: 2,
+            shipType: 'light_freighter',
+            playerName: 'Commander'
+        };
+
+        this.setupMenus();
+        this.setupEventListeners();
+    }
+
+    private setupMenus(): void {
+        // Main Menu
+        this.buttons.set('main', [
+            {
+                id: 'new_game',
+                label: 'NEW GAME',
+                x: this.canvas.width / 2 - 120,
+                y: this.canvas.height / 2 - 60,
+                width: 240,
+                height: 40,
+                action: () => this.switchMenu('new_game_setup'),
+                enabled: true,
+                hover: false
+            },
+            {
+                id: 'load_game',
+                label: 'LOAD GAME',
+                x: this.canvas.width / 2 - 120,
+                y: this.canvas.height / 2 - 10,
+                width: 240,
+                height: 40,
+                action: () => this.loadGame(),
+                enabled: this.hasSaveGame(),
+                hover: false
+            },
+            {
+                id: 'settings',
+                label: 'SETTINGS',
+                x: this.canvas.width / 2 - 120,
+                y: this.canvas.height / 2 + 40,
+                width: 240,
+                height: 40,
+                action: () => this.switchMenu('settings'),
+                enabled: true,
+                hover: false
+            },
+            {
+                id: 'exit',
+                label: 'EXIT',
+                x: this.canvas.width / 2 - 120,
+                y: this.canvas.height / 2 + 90,
+                width: 240,
+                height: 40,
+                action: () => this.exitGame(),
+                enabled: true,
+                hover: false
+            }
+        ]);
+
+        // New Game Setup Menu
+        this.buttons.set('new_game_setup', [
+            {
+                id: 'start_game',
+                label: 'START GAME',
+                x: this.canvas.width - 180,
+                y: this.canvas.height - 80,
+                width: 160,
+                height: 40,
+                action: () => this.startNewGame(),
+                enabled: true,
+                hover: false
+            },
+            {
+                id: 'back_to_main',
+                label: 'BACK',
+                x: 20,
+                y: this.canvas.height - 80,
+                width: 100,
+                height: 40,
+                action: () => this.switchMenu('main'),
+                enabled: true,
+                hover: false
+            }
+        ]);
+
+        // Setup sliders for new game settings
+        this.sliders.set('new_game_setup', [
+            {
+                id: 'galaxy_size',
+                label: 'GALAXY SIZE',
+                x: 50,
+                y: 150,
+                width: 300,
+                value: this.gameSettings.galaxySize,
+                min: 100,
+                max: 500,
+                step: 50,
+                onChange: (value) => this.gameSettings.galaxySize = value
+            },
+            {
+                id: 'difficulty',
+                label: 'DIFFICULTY',
+                x: 50,
+                y: 220,
+                width: 300,
+                value: this.gameSettings.difficultyLevel,
+                min: 1,
+                max: 5,
+                step: 1,
+                onChange: (value) => this.gameSettings.difficultyLevel = value
+            },
+            {
+                id: 'economic_complexity',
+                label: 'ECONOMIC COMPLEXITY',
+                x: 50,
+                y: 290,
+                width: 300,
+                value: this.gameSettings.economicComplexity,
+                min: 1,
+                max: 3,
+                step: 1,
+                onChange: (value) => this.gameSettings.economicComplexity = value
+            },
+            {
+                id: 'research_speed',
+                label: 'RESEARCH SPEED',
+                x: 50,
+                y: 360,
+                width: 300,
+                value: this.gameSettings.researchSpeed,
+                min: 0.5,
+                max: 2.0,
+                step: 0.1,
+                onChange: (value) => this.gameSettings.researchSpeed = value
+            },
+            {
+                id: 'starting_resources',
+                label: 'STARTING RESOURCES',
+                x: 50,
+                y: 430,
+                width: 300,
+                value: this.gameSettings.startingResources,
+                min: 1,
+                max: 5,
+                step: 1,
+                onChange: (value) => this.gameSettings.startingResources = value
+            }
+        ]);
+    }
+
+    private setupEventListeners(): void {
+        this.canvas.addEventListener('mousemove', (e) => {
+            const rect = this.canvas.getBoundingClientRect();
+            this.mousePos.x = e.clientX - rect.left;
+            this.mousePos.y = e.clientY - rect.top;
+            this.updateHoverStates();
+        });
+
+        this.canvas.addEventListener('click', (e) => {
+            this.handleClick();
+        });
+
+        // Handle keyboard input for name entry
+        document.addEventListener('keydown', (e) => {
+            if (this.currentMenu === 'new_game_setup') {
+                this.handleNameInput(e);
+            }
+        });
+    }
+
+    private updateHoverStates(): void {
+        const buttons = this.buttons.get(this.currentMenu);
+        if (!buttons) return;
+
+        buttons.forEach(button => {
+            button.hover = this.isPointInButton(this.mousePos, button);
+        });
+    }
+
+    private isPointInButton(point: { x: number; y: number }, button: MenuButton): boolean {
+        return point.x >= button.x && 
+               point.x <= button.x + button.width &&
+               point.y >= button.y && 
+               point.y <= button.y + button.height;
+    }
+
+    private handleClick(): void {
+        // Check button clicks
+        const buttons = this.buttons.get(this.currentMenu);
+        if (buttons) {
+            buttons.forEach(button => {
+                if (button.enabled && button.hover) {
+                    button.action();
+                }
+            });
+        }
+
+        // Check slider clicks
+        const sliders = this.sliders.get(this.currentMenu);
+        if (sliders) {
+            sliders.forEach(slider => {
+                if (this.isPointInSlider(this.mousePos, slider)) {
+                    this.handleSliderClick(slider);
+                }
+            });
+        }
+    }
+
+    private isPointInSlider(point: { x: number; y: number }, slider: MenuSlider): boolean {
+        return point.x >= slider.x && 
+               point.x <= slider.x + slider.width &&
+               point.y >= slider.y + 20 && 
+               point.y <= slider.y + 40;
+    }
+
+    private handleSliderClick(slider: MenuSlider): void {
+        const relativeX = this.mousePos.x - slider.x;
+        const percentage = Math.max(0, Math.min(1, relativeX / slider.width));
+        const newValue = slider.min + (slider.max - slider.min) * percentage;
+        const steppedValue = Math.round(newValue / slider.step) * slider.step;
+        
+        slider.value = steppedValue;
+        slider.onChange(steppedValue);
+    }
+
+    private handleNameInput(e: KeyboardEvent): void {
+        if (e.key === 'Backspace') {
+            this.gameSettings.playerName = this.gameSettings.playerName.slice(0, -1);
+        } else if (e.key.length === 1 && this.gameSettings.playerName.length < 20) {
+            this.gameSettings.playerName += e.key.toUpperCase();
+        }
+    }
+
+    public update(deltaTime: number): void {
+        this.animationTime += deltaTime;
+    }
+
+    public render(): void {
+        this.clearScreen();
+        
+        switch (this.currentMenu) {
+            case 'main':
+                this.renderMainMenu();
+                break;
+            case 'new_game_setup':
+                this.renderNewGameSetup();
+                break;
+            case 'settings':
+                this.renderSettings();
+                break;
+        }
+    }
+
+    private clearScreen(): void {
+        // Create retro CRT background effect
+        const gradient = this.ctx.createLinearGradient(0, 0, this.canvas.width, this.canvas.height);
+        gradient.addColorStop(0, this.colors.background);
+        gradient.addColorStop(0.5, this.colors.backgroundSecondary);
+        gradient.addColorStop(1, this.colors.background);
+        
+        this.ctx.fillStyle = gradient;
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Add scan lines effect
+        this.renderScanLines();
+    }
+
+    private renderScanLines(): void {
+        this.ctx.strokeStyle = 'rgba(95, 175, 157, 0.1)';
+        this.ctx.lineWidth = 1;
+        
+        for (let y = 0; y < this.canvas.height; y += 4) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, y);
+            this.ctx.lineTo(this.canvas.width, y);
+            this.ctx.stroke();
+        }
+    }
+
+    private renderMainMenu(): void {
+        // Game title
+        this.ctx.fillStyle = this.colors.accent;
+        this.ctx.font = 'bold 32px monospace';
+        this.ctx.textAlign = 'center';
+        
+        // Add glow effect
+        this.ctx.shadowColor = this.colors.accent;
+        this.ctx.shadowBlur = 20;
+        this.ctx.fillText('SPACE EXPLORER', this.canvas.width / 2, 120);
+        this.ctx.shadowBlur = 0;
+
+        // Subtitle
+        this.ctx.fillStyle = this.colors.primaryText;
+        this.ctx.font = '16px monospace';
+        this.ctx.fillText('16-BIT EDITION', this.canvas.width / 2, 150);
+
+        // Version info
+        this.ctx.fillStyle = this.colors.secondaryText;
+        this.ctx.font = '12px monospace';
+        this.ctx.textAlign = 'right';
+        this.ctx.fillText('v1.0.0', this.canvas.width - 20, this.canvas.height - 20);
+
+        // Render buttons
+        this.renderButtons('main');
+
+        // Add flickering effect
+        if (Math.sin(this.animationTime * 5) > 0.8) {
+            this.ctx.fillStyle = 'rgba(249, 115, 0, 0.1)';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+    }
+
+    private renderNewGameSetup(): void {
+        // Title
+        this.ctx.fillStyle = this.colors.primaryText;
+        this.ctx.font = 'bold 24px monospace';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('NEW GAME SETUP', this.canvas.width / 2, 50);
+
+        // Ship selection panel
+        this.renderShipSelection();
+
+        // Player name input
+        this.renderNameInput();
+
+        // Render sliders
+        this.renderSliders('new_game_setup');
+
+        // Game preview info
+        this.renderGamePreview();
+
+        // Render buttons
+        this.renderButtons('new_game_setup');
+    }
+
+    private renderShipSelection(): void {
+        const shipTypes = [
+            { id: 'light_freighter', name: 'LIGHT FREIGHTER', desc: 'Balanced cargo and speed' },
+            { id: 'heavy_freighter', name: 'HEAVY FREIGHTER', desc: 'Maximum cargo capacity' },
+            { id: 'scout_ship', name: 'SCOUT SHIP', desc: 'Fast and maneuverable' },
+            { id: 'mining_vessel', name: 'MINING VESSEL', desc: 'Industrial equipment' }
+        ];
+
+        this.ctx.fillStyle = this.colors.primaryText;
+        this.ctx.font = '14px monospace';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText('STARTING SHIP:', 400, 150);
+
+        shipTypes.forEach((ship, index) => {
+            const y = 180 + index * 60;
+            const isSelected = this.gameSettings.shipType === ship.id;
+            
+            // Ship selection box
+            this.ctx.strokeStyle = isSelected ? this.colors.accent : this.colors.buttonNormal;
+            this.ctx.lineWidth = 2;
+            this.ctx.strokeRect(400, y - 20, 300, 50);
+            
+            if (isSelected) {
+                this.ctx.fillStyle = 'rgba(249, 115, 0, 0.2)';
+                this.ctx.fillRect(400, y - 20, 300, 50);
+            }
+
+            // Ship info
+            this.ctx.fillStyle = isSelected ? this.colors.accent : this.colors.primaryText;
+            this.ctx.font = 'bold 12px monospace';
+            this.ctx.fillText(ship.name, 410, y);
+            
+            this.ctx.fillStyle = this.colors.secondaryText;
+            this.ctx.font = '10px monospace';
+            this.ctx.fillText(ship.desc, 410, y + 15);
+
+            // Click detection for ship selection
+            if (this.mousePos.x >= 400 && this.mousePos.x <= 700 &&
+                this.mousePos.y >= y - 20 && this.mousePos.y <= y + 30) {
+                this.gameSettings.shipType = ship.id;
+            }
+        });
+    }
+
+    private renderNameInput(): void {
+        this.ctx.fillStyle = this.colors.primaryText;
+        this.ctx.font = '14px monospace';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText('COMMANDER NAME:', 50, 120);
+
+        // Input box
+        this.ctx.strokeStyle = this.colors.buttonNormal;
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(200, 100, 200, 30);
+
+        // Name text
+        this.ctx.fillStyle = this.colors.accent;
+        this.ctx.font = 'bold 12px monospace';
+        this.ctx.fillText(this.gameSettings.playerName + '_', 210, 120);
+    }
+
+    private renderSliders(menuName: string): void {
+        const sliders = this.sliders.get(menuName);
+        if (!sliders) return;
+
+        sliders.forEach(slider => {
+            // Label
+            this.ctx.fillStyle = this.colors.primaryText;
+            this.ctx.font = '12px monospace';
+            this.ctx.textAlign = 'left';
+            this.ctx.fillText(slider.label, slider.x, slider.y);
+
+            // Slider track
+            this.ctx.fillStyle = this.colors.buttonNormal;
+            this.ctx.fillRect(slider.x, slider.y + 20, slider.width, 20);
+
+            // Slider fill
+            const fillWidth = ((slider.value - slider.min) / (slider.max - slider.min)) * slider.width;
+            this.ctx.fillStyle = this.colors.accent;
+            this.ctx.fillRect(slider.x, slider.y + 20, fillWidth, 20);
+
+            // Value display
+            this.ctx.fillStyle = this.colors.primaryText;
+            this.ctx.textAlign = 'right';
+            this.ctx.fillText(slider.value.toString(), slider.x + slider.width + 50, slider.y + 35);
+        });
+    }
+
+    private renderGamePreview(): void {
+        const previewX = 400;
+        const previewY = 400;
+
+        this.ctx.fillStyle = this.colors.primaryText;
+        this.ctx.font = 'bold 14px monospace';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText('GALAXY PREVIEW:', previewX, previewY);
+
+        // Preview stats
+        const stats = [
+            `Systems: ${this.gameSettings.galaxySize}`,
+            `Difficulty: ${this.getDifficultyText()}`,
+            `Economy: ${this.getEconomyText()}`,
+            `Research: ${(this.gameSettings.researchSpeed * 100).toFixed(0)}%`
+        ];
+
+        this.ctx.font = '10px monospace';
+        this.ctx.fillStyle = this.colors.secondaryText;
+        
+        stats.forEach((stat, index) => {
+            this.ctx.fillText(stat, previewX, previewY + 25 + index * 15);
+        });
+    }
+
+    private renderButtons(menuName: string): void {
+        const buttons = this.buttons.get(menuName);
+        if (!buttons) return;
+
+        buttons.forEach(button => {
+            // Button background
+            let buttonColor = this.colors.buttonNormal;
+            if (!button.enabled) {
+                buttonColor = this.colors.backgroundSecondary;
+            } else if (button.hover) {
+                buttonColor = this.colors.buttonHover;
+            }
+
+            this.ctx.fillStyle = buttonColor;
+            this.ctx.fillRect(button.x, button.y, button.width, button.height);
+
+            // Button border
+            this.ctx.strokeStyle = button.enabled ? this.colors.primaryText : this.colors.secondaryText;
+            this.ctx.lineWidth = 2;
+            this.ctx.strokeRect(button.x, button.y, button.width, button.height);
+
+            // Button text
+            this.ctx.fillStyle = button.enabled ? this.colors.primaryText : this.colors.secondaryText;
+            this.ctx.font = 'bold 14px monospace';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(
+                button.label,
+                button.x + button.width / 2,
+                button.y + button.height / 2 + 5
+            );
+        });
+    }
+
+    private renderSettings(): void {
+        this.ctx.fillStyle = this.colors.primaryText;
+        this.ctx.font = 'bold 24px monospace';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('SETTINGS', this.canvas.width / 2, 50);
+
+        // Settings content here
+        this.ctx.font = '12px monospace';
+        this.ctx.fillText('Settings panel - Coming soon', this.canvas.width / 2, 200);
+    }
+
+    private switchMenu(menuName: string): void {
+        this.currentMenu = menuName;
+    }
+
+    private startNewGame(): void {
+        // Emit event to start game with current settings
+        const event = new CustomEvent('startNewGame', {
+            detail: this.gameSettings
+        });
+        window.dispatchEvent(event);
+    }
+
+    private loadGame(): void {
+        const saveData = localStorage.getItem('spaceExplorerSave');
+        if (saveData) {
+            const event = new CustomEvent('loadGame', {
+                detail: JSON.parse(saveData)
+            });
+            window.dispatchEvent(event);
+        }
+    }
+
+    private hasSaveGame(): boolean {
+        return localStorage.getItem('spaceExplorerSave') !== null;
+    }
+
+    private exitGame(): void {
+        if (confirm('Are you sure you want to exit?')) {
+            window.close();
+        }
+    }
+
+    private getDifficultyText(): string {
+        const levels = ['EASY', 'NORMAL', 'HARD', 'VETERAN', 'NIGHTMARE'];
+        return levels[this.gameSettings.difficultyLevel - 1] || 'NORMAL';
+    }
+
+    private getEconomyText(): string {
+        const levels = ['SIMPLE', 'COMPLEX', 'REALISTIC'];
+        return levels[this.gameSettings.economicComplexity - 1] || 'SIMPLE';
+    }
+
+    public getCurrentMenu(): string {
+        return this.currentMenu;
+    }
+
+    public getGameSettings(): GameSettings {
+        return { ...this.gameSettings };
+    }
+}

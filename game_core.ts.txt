@@ -1,0 +1,406 @@
+// Core Game Engine
+import { GameConfig } from './GameConfig';
+import { StateManager } from './StateManager';
+import { SceneManager } from './SceneManager';
+import { InputManager } from './InputManager';
+import { Camera } from './Camera';
+import { ParticleSystem } from '../effects/ParticleSystem';
+import { PlayerShip } from '../entities/PlayerShip';
+import { UIManager } from '../ui/UIManager';
+import { Galaxy } from '../world/Galaxy';
+import { PhysicsEngine } from '../physics/PhysicsEngine';
+import { AudioManager } from '../audio/AudioManager';
+import { COLORS } from '../main';
+
+export class Game {
+    // Core systems
+    private canvas: HTMLCanvasElement;
+    private ctx: CanvasRenderingContext2D;
+    private config: GameConfig;
+    private running: boolean = false;
+    
+    // Game managers
+    public stateManager: StateManager;
+    public sceneManager: SceneManager;
+    public inputManager: InputManager;
+    public camera: Camera;
+    public particleSystem: ParticleSystem;
+    public uiManager: UIManager;
+    public physicsEngine: PhysicsEngine;
+    public audioManager: AudioManager;
+    
+    // Game world
+    public galaxy: Galaxy;
+    public player: PlayerShip;
+    
+    // Timing
+    private lastTime: number = 0;
+    private deltaTime: number = 0;
+    private gameTime: number = 0;
+    private frameCount: number = 0;
+    
+    // Debug info
+    public debugMode: boolean = false;
+    private fpsCounter: number = 0;
+    private fpsTimer: number = 0;
+    
+    constructor(config: GameConfig) {
+        this.config = config;
+        
+        // Initialize canvas
+        this.canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
+        if (!this.canvas) {
+            throw new Error('Game canvas not found!');
+        }
+        
+        const context = this.canvas.getContext('2d');
+        if (!context) {
+            throw new Error('Failed to get 2D rendering context!');
+        }
+        this.ctx = context;
+        
+        // Configure canvas for pixel-perfect rendering
+        this.setupCanvas();
+        
+        // Initialize core systems
+        this.initializeSystems();
+    }
+    
+    private setupCanvas(): void {
+        this.resizeCanvas();
+        window.addEventListener('resize', () => this.resizeCanvas());
+        
+        // Pixel-perfect rendering settings
+        this.ctx.imageSmoothingEnabled = false;
+        this.ctx.textBaseline = 'top';
+        
+        // CRT effect overlay
+        const crtOverlay = document.getElementById('crtOverlay');
+        if (crtOverlay) {
+            crtOverlay.classList.remove('hidden');
+        }
+    }
+    
+    private resizeCanvas(): void {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight * 0.85; // Leave space for UI
+        
+        // Reconfigure context after resize
+        this.ctx.imageSmoothingEnabled = false;
+        this.ctx.textBaseline = 'top';
+    }
+    
+    private initializeSystems(): void {
+        // Initialize managers
+        this.stateManager = new StateManager(this);
+        this.inputManager = new InputManager(this);
+        this.camera = new Camera(this);
+        this.particleSystem = new ParticleSystem(this);
+        this.uiManager = new UIManager(this);
+        this.physicsEngine = new PhysicsEngine(this);
+        this.audioManager = AudioManager.getInstance();
+        
+        // Initialize world
+        this.galaxy = new Galaxy(this.config);
+        this.sceneManager = new SceneManager(this, this.galaxy);
+        
+        // Initialize player
+        this.player = new PlayerShip(200, 200);
+        
+        console.log('✅ Game systems initialized');
+    }
+    
+    public async initialize(): Promise<void> {
+        try {
+            // Generate galaxy
+            console.log('🌌 Generating galaxy...');
+            await this.galaxy.generate();
+            
+            // Initialize scenes
+            await this.sceneManager.initialize();
+            
+            // Initialize UI
+            this.uiManager.initialize();
+            
+            // Set initial game state
+            this.stateManager.setState('playing');
+            
+            console.log('✅ Game initialization complete');
+        } catch (error) {
+            console.error('❌ Game initialization failed:', error);
+            throw error;
+        }
+    }
+    
+    public start(): void {
+        if (this.running) {
+            console.warn('⚠️ Game is already running');
+            return;
+        }
+        
+        this.running = true;
+        this.lastTime = performance.now();
+        
+        // Show game UI
+        const statusBar = document.getElementById('statusBar');
+        if (statusBar) {
+            statusBar.classList.remove('hidden');
+        }
+        
+        // Show mobile controls if needed
+        if (this.inputManager.isMobile()) {
+            const mobileControls = document.getElementById('mobileControls');
+            if (mobileControls) {
+                mobileControls.classList.remove('hidden');
+            }
+        }
+        
+        // Start game loop
+        this.gameLoop();
+        
+        // Play game music
+        this.audioManager.playMusic('gameplay');
+        
+        console.log('🎮 Game started!');
+    }
+    
+    public pause(): void {
+        this.running = false;
+        this.stateManager.setState('paused');
+        this.audioManager.pauseMusic();
+    }
+    
+    public resume(): void {
+        this.running = true;
+        this.stateManager.setState('playing');
+        this.lastTime = performance.now();
+        this.gameLoop();
+        this.audioManager.resumeMusic();
+    }
+    
+    public stop(): void {
+        this.running = false;
+        this.audioManager.stopMusic();
+    }
+    
+    public destroy(): void {
+        this.stop();
+        
+        // Clean up systems
+        this.inputManager.destroy();
+        this.uiManager.destroy();
+        this.particleSystem.destroy();
+        
+        console.log('🗑️ Game destroyed');
+    }
+    
+    private gameLoop(): void {
+        if (!this.running) return;
+        
+        const currentTime = performance.now();
+        this.deltaTime = Math.min((currentTime - this.lastTime) / 1000, 0.016); // Cap at 60fps
+        this.lastTime = currentTime;
+        this.gameTime += this.deltaTime;
+        this.frameCount++;
+        
+        // Update FPS counter
+        this.fpsTimer += this.deltaTime;
+        if (this.fpsTimer >= 1.0) {
+            this.fpsCounter = this.frameCount;
+            this.frameCount = 0;
+            this.fpsTimer = 0;
+        }
+        
+        // Update game systems
+        this.update(this.deltaTime);
+        
+        // Render game
+        this.render();
+        
+        // Continue loop
+        requestAnimationFrame(() => this.gameLoop());
+    }
+    
+    private update(deltaTime: number): void {
+        try {
+            // Update core systems
+            this.stateManager.update(deltaTime);
+            this.inputManager.update(deltaTime);
+            this.physicsEngine.update(deltaTime);
+            
+            // Update game objects
+            if (this.stateManager.getCurrentState() === 'playing') {
+                this.player.update(deltaTime, this.inputManager);
+                this.sceneManager.update(deltaTime);
+                this.particleSystem.update(deltaTime);
+                this.camera.update(deltaTime);
+            }
+            
+            // Update UI
+            this.uiManager.update(deltaTime);
+            
+        } catch (error) {
+            console.error('💥 Update error:', error);
+            this.pause();
+        }
+    }
+    
+    private render(): void {
+        try {
+            // Clear canvas
+            this.ctx.fillStyle = COLORS.BG_PRIMARY;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            
+            // Render current state
+            this.stateManager.render(this.ctx);
+            
+            // Render debug info if enabled
+            if (this.debugMode) {
+                this.renderDebugInfo();
+            }
+            
+        } catch (error) {
+            console.error('💥 Render error:', error);
+            this.pause();
+        }
+    }
+    
+    private renderDebugInfo(): void {
+        const ctx = this.ctx;
+        
+        // Debug overlay
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(10, 10, 200, 120);
+        
+        ctx.fillStyle = COLORS.ACCENT_FRIENDLY;
+        ctx.font = '8px monospace';
+        ctx.textAlign = 'left';
+        
+        let y = 25;
+        const lineHeight = 12;
+        
+        // Performance info
+        ctx.fillText(`FPS: ${this.fpsCounter}`, 15, y);
+        y += lineHeight;
+        ctx.fillText(`Delta: ${(this.deltaTime * 1000).toFixed(1)}ms`, 15, y);
+        y += lineHeight;
+        ctx.fillText(`Game Time: ${this.gameTime.toFixed(1)}s`, 15, y);
+        y += lineHeight;
+        
+        // Player info
+        ctx.fillText(`Player X: ${Math.round(this.player.position.x)}`, 15, y);
+        y += lineHeight;
+        ctx.fillText(`Player Y: ${Math.round(this.player.position.y)}`, 15, y);
+        y += lineHeight;
+        
+        // System info
+        const speed = Math.sqrt(this.player.velocity.x ** 2 + this.player.velocity.y ** 2);
+        ctx.fillText(`Speed: ${(speed * 100).toFixed(1)} m/s`, 15, y);
+        y += lineHeight;
+        ctx.fillText(`Fuel: ${this.player.systems.fuel.toFixed(0)}%`, 15, y);
+        y += lineHeight;
+        
+        // Scene info
+        ctx.fillText(`Scene: ${this.sceneManager.getCurrentSceneName()}`, 15, y);
+        y += lineHeight;
+        ctx.fillText(`Particles: ${this.particleSystem.getParticleCount()}`, 15, y);
+    }
+    
+    // Public accessors
+    public getCanvas(): HTMLCanvasElement {
+        return this.canvas;
+    }
+    
+    public getContext(): CanvasRenderingContext2D {
+        return this.ctx;
+    }
+    
+    public getConfig(): GameConfig {
+        return this.config;
+    }
+    
+    public getDeltaTime(): number {
+        return this.deltaTime;
+    }
+    
+    public getGameTime(): number {
+        return this.gameTime;
+    }
+    
+    public isRunning(): boolean {
+        return this.running;
+    }
+    
+    public getFPS(): number {
+        return this.fpsCounter;
+    }
+    
+    public toggleDebugMode(): void {
+        this.debugMode = !this.debugMode;
+        console.log(`🐛 Debug mode: ${this.debugMode ? 'ON' : 'OFF'}`);
+    }
+    
+    // Event handlers
+    public onWindowFocus(): void {
+        if (this.stateManager.getCurrentState() === 'paused') {
+            this.resume();
+        }
+    }
+    
+    public onWindowBlur(): void {
+        if (this.stateManager.getCurrentState() === 'playing') {
+            this.pause();
+        }
+    }
+    
+    public onVisibilityChange(): void {
+        if (document.hidden) {
+            this.onWindowBlur();
+        } else {
+            this.onWindowFocus();
+        }
+    }
+}
+
+// Window event handlers
+window.addEventListener('focus', () => {
+    const game = (window as any).game;
+    if (game) game.onWindowFocus();
+});
+
+window.addEventListener('blur', () => {
+    const game = (window as any).game;
+    if (game) game.onWindowBlur();
+});
+
+document.addEventListener('visibilitychange', () => {
+    const game = (window as any).game;
+    if (game) game.onVisibilityChange();
+});
+
+// Keyboard shortcuts for debugging
+document.addEventListener('keydown', (event) => {
+    const game = (window as any).game;
+    if (game && event.ctrlKey) {
+        switch (event.key.toLowerCase()) {
+            case 'd':
+                event.preventDefault();
+                game.toggleDebugMode();
+                break;
+            case 'p':
+                event.preventDefault();
+                if (game.isRunning()) {
+                    game.pause();
+                } else {
+                    game.resume();
+                }
+                break;
+            case 'r':
+                event.preventDefault();
+                if (confirm('Restart game?')) {
+                    location.reload();
+                }
+                break;
+        }
+    }
+});
